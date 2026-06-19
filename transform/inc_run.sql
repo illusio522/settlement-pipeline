@@ -8,28 +8,28 @@
 CREATE OR REPLACE TEMP TABLE _new_payment AS
 SELECT txn_id, order_no, brand, amount, type, orig_txn_id, epoch_ms(event_time) AS event_time, _seq
 FROM (SELECT *, row_number() OVER (PARTITION BY txn_id ORDER BY _seq DESC) rn
-      FROM read_json_auto('/work/data/landing/payment.ndjson')
+      FROM read_json_auto('/work/data/landing/payment.p*.ndjson')
       WHERE _seq > (SELECT last_seq FROM _watermark WHERE stream='payment'))
 WHERE rn=1 AND _op<>'d';
 
 CREATE OR REPLACE TEMP TABLE _new_method AS
 SELECT pm_id, txn_id, order_no, method, payments_mid, amount, type, epoch_ms(event_time) AS event_time, _seq
 FROM (SELECT *, row_number() OVER (PARTITION BY pm_id ORDER BY _seq DESC) rn
-      FROM read_json_auto('/work/data/landing/payment_method.ndjson')
+      FROM read_json_auto('/work/data/landing/payment_method.p*.ndjson')
       WHERE _seq > (SELECT last_seq FROM _watermark WHERE stream='payment_method'))
 WHERE rn=1 AND _op<>'d';
 
 CREATE OR REPLACE TEMP TABLE _new_item AS
 SELECT order_no, line_no, partner_id, brand, item_amount, _seq
 FROM (SELECT *, row_number() OVER (PARTITION BY order_no, line_no ORDER BY _seq DESC) rn
-      FROM read_json_auto('/work/data/landing/order_item.ndjson')
+      FROM read_json_auto('/work/data/landing/order_item.p*.ndjson')
       WHERE _seq > (SELECT last_seq FROM _watermark WHERE stream='order_item'))
 WHERE rn=1 AND _op<>'d';
 
 CREATE OR REPLACE TEMP TABLE _new_cancel AS
 SELECT cancel_txn_id, order_no, line_no, _seq
 FROM (SELECT *, row_number() OVER (PARTITION BY cancel_txn_id, order_no, line_no ORDER BY _seq DESC) rn
-      FROM read_json_auto('/work/data/landing/cancel.ndjson')
+      FROM read_json_auto('/work/data/landing/cancel.p*.ndjson')
       WHERE _seq > (SELECT last_seq FROM _watermark WHERE stream='cancel'))
 WHERE rn=1 AND _op<>'d';
 

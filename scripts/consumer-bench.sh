@@ -36,8 +36,8 @@ run_case() {
   wait_empty
   echo "[reset] 오프셋 earliest 리셋"
   $KAFKA --group "$GROUP" --reset-offsets --all-topics --to-earliest --execute >/dev/null 2>&1
-  echo "[truncate] 랜딩 비우기"
-  for t in payment payment_method order_item cancel; do : > "$LAND/$t.ndjson"; done
+  echo "[truncate] 랜딩 비우기(샤드 포함 전부)"
+  rm -f "$LAND"/*.ndjson
   local t_launch t_first="" last=0 last_change
   t_launch=$(now); last_change=$(now)
   echo "[launch] java -jar (conc=$conc, ${strat##*.})"

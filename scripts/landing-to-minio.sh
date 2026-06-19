@@ -11,10 +11,10 @@ cat <<'SQL' | docker run --rm -i --network "$NET" -v "$PWD":/work "$IMG" :memory
 INSTALL httpfs; LOAD httpfs;
 SET s3_endpoint='sp-minio:9000'; SET s3_access_key_id='minio';
 SET s3_secret_access_key='minio12345'; SET s3_use_ssl=false; SET s3_url_style='path';
-COPY (SELECT * FROM read_json_auto('/work/data/landing/payment.ndjson'))        TO 's3://lake/landing/payment.parquet'        (FORMAT PARQUET);
-COPY (SELECT * FROM read_json_auto('/work/data/landing/payment_method.ndjson')) TO 's3://lake/landing/payment_method.parquet' (FORMAT PARQUET);
-COPY (SELECT * FROM read_json_auto('/work/data/landing/order_item.ndjson'))     TO 's3://lake/landing/order_item.parquet'     (FORMAT PARQUET);
-COPY (SELECT * FROM read_json_auto('/work/data/landing/cancel.ndjson'))         TO 's3://lake/landing/cancel.parquet'         (FORMAT PARQUET);
+COPY (SELECT * FROM read_json_auto('/work/data/landing/payment.p*.ndjson'))        TO 's3://lake/landing/payment.parquet'        (FORMAT PARQUET);
+COPY (SELECT * FROM read_json_auto('/work/data/landing/payment_method.p*.ndjson')) TO 's3://lake/landing/payment_method.parquet' (FORMAT PARQUET);
+COPY (SELECT * FROM read_json_auto('/work/data/landing/order_item.p*.ndjson'))     TO 's3://lake/landing/order_item.parquet'     (FORMAT PARQUET);
+COPY (SELECT * FROM read_json_auto('/work/data/landing/cancel.p*.ndjson'))         TO 's3://lake/landing/cancel.parquet'         (FORMAT PARQUET);
 SQL
 
 echo "▶ MinIO 적재 확인"

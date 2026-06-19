@@ -44,7 +44,7 @@ public class CdcSinkListener {
         parser.parse(rec)
                 .flatMap(normalizer::normalize)
                 .ifPresent(c -> {
-                    writer.write(c);   // _seq = LSN (CanonicalRecord에 실림)
+                    writer.write(c, rec.partition());   // 파티션별 샤드 파일로(충돌0). _seq=LSN
                     landedCounter.increment();   // ★ 적재율 메트릭 (rate()로 msg/s 그래프)
                     long n = landed.incrementAndGet();
                     if (n % 10000 == 0) log.info("landed {} records", n);
