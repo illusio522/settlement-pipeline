@@ -1,0 +1,44 @@
+# env / secrets
+.env
+*.local
+
+# data / artifacts
+data/
+*.parquet
+*.duckdb
+*.db
+lake/warehouse/
+minio-data/
+pg-data/
+redpanda-data/
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.dbt/
+
+# dbt
+transform/dbt/target/
+transform/dbt/dbt_packages/
+transform/dbt/logs/
+
+# build artifacts (gradle / java)
+build/
+**/build/
+.gradle/
+**/.gradle/
+
+# dbt (현 프로젝트 경로)
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+
+# omc state
+.omc/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
+*.log

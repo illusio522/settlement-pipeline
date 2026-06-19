@@ -1,0 +1,13 @@
+name: 'settlement'
+version: '1.0.0'
+profile: 'settlement'
+
+model-paths: ["models"]
+
+models:
+  settlement:
+    +materialized: table       # 기본: 테이블. (settlement_event는 추후 incremental로)
+    staging:
+      +materialized: table
+    intermediate:
+      +materialized: table     # ★ 각 단계를 실테이블로 → 윈도우-over-UNION 크래시 회피

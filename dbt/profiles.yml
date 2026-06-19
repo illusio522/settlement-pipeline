@@ -1,0 +1,7 @@
+settlement:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: /work/data/dbt.duckdb     # dbt가 모델 테이블을 생성할 DuckDB 파일
+      threads: 4

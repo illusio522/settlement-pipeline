@@ -1,0 +1,170 @@
+{
+  "title": "Settlement Pipeline — 통합 모니터링",
+  "uid": "settlement",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "📊 Kafka 브로커 관점 (유입 → 소비 → 밀린 양)",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "id": 1,
+      "title": "컨슈머 LAG 총합 (안읽고 밀린 양)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "targets": [
+        { "expr": "sum(kafka_consumergroup_lag{consumergroup=\"normalize-sink\"})", "legendFormat": "total lag" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "토픽별 컨슈머 LAG",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "targets": [
+        { "expr": "sum by (topic) (kafka_consumergroup_lag{consumergroup=\"normalize-sink\"})", "legendFormat": "{{topic}}" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "소비율 (컨슈머가 읽는 속도, msg/s)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "targets": [
+        { "expr": "sum(rate(kafka_consumergroup_current_offset{consumergroup=\"normalize-sink\"}[1m]))", "legendFormat": "consume rate" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "유입율 (토픽에 쌓이는 속도, msg/s)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "targets": [
+        { "expr": "sum by (topic) (rate(kafka_topic_partition_current_offset{topic=~\"(pay|order)\\\\..*\"}[1m]))", "legendFormat": "{{topic}}" }
+      ]
+    },
+    {
+      "id": 101,
+      "type": "row",
+      "title": "☕ 자바 컨슈머 앱 관점 (랜딩 적재 · JVM)",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 }
+    },
+    {
+      "id": 10,
+      "title": "랜딩 적재율 (앱 관점, records/s)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "targets": [
+        { "expr": "rate(settlement_landed_records_total{application=\"settlement-normalize\"}[1m])", "legendFormat": "landed/s" }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "랜딩 누적 건수",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "targets": [
+        { "expr": "settlement_landed_records_total{application=\"settlement-normalize\"}", "legendFormat": "total" }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "JVM 힙 메모리 사용",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        { "expr": "sum(jvm_memory_used_bytes{application=\"settlement-normalize\", area=\"heap\"})", "legendFormat": "heap used" },
+        { "expr": "sum(jvm_memory_committed_bytes{application=\"settlement-normalize\", area=\"heap\"})", "legendFormat": "heap committed" }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "스레드 수 (컨슈머 병렬도)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 26 },
+      "targets": [
+        { "expr": "jvm_threads_live_threads{application=\"settlement-normalize\"}", "legendFormat": "live threads" }
+      ]
+    },
+    {
+      "id": 14,
+      "title": "GC 시간 (초/초)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 26 },
+      "targets": [
+        { "expr": "rate(jvm_gc_pause_seconds_sum{application=\"settlement-normalize\"}[1m])", "legendFormat": "gc s/s" }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "스레드별 담당 파티션 수 (배분 균형 — 0이면 노는 일꾼)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 34 },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "expr": "kafka_consumer_coordinator_assigned_partitions{application=\"settlement-normalize\"}", "legendFormat": "{{client_id}}" }
+      ]
+    },
+    {
+      "id": 16,
+      "title": "스레드별 처리량 (records/s — 일꾼별 부하)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 34 },
+      "targets": [
+        { "expr": "rate(kafka_consumer_fetch_manager_records_consumed_total{application=\"settlement-normalize\"}[1m])", "legendFormat": "{{client_id}}" }
+      ]
+    },
+    {
+      "id": 17,
+      "title": "스레드별 담당 토픽-파티션 (현재 배정 — 커스텀 메트릭)",
+      "type": "table",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 42 },
+      "targets": [
+        { "expr": "settlement_consumer_assignment{application=\"settlement-normalize\"} == 1", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "application": true, "instance": true, "job": true, "kafka_version": true, "spring_id": true, "Value": true, "topic": true, "partition": true },
+            "renameByName": { "client_id": "스레드", "tp": "토픽-파티션" },
+            "indexByName": { "client_id": 0, "tp": 1 }
+          }
+        },
+        { "id": "sortBy", "options": { "fields": "", "sort": [ { "field": "스레드" }, { "field": "토픽-파티션" } ] } }
+      ]
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" },
+        "hide": 2
+      }
+    ]
+  }
+}

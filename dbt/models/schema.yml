@@ -1,0 +1,54 @@
+version: 2
+
+models:
+  # ===== 스테이징: 키 유일성·널 =====
+  - name: stg_payment
+    description: "랜딩→canonical 결제 헤더 (dedup 완료)"
+    columns:
+      - name: txn_id
+        description: "거래 ID (PK)"
+        tests: [unique, not_null]
+      - name: order_no
+        tests: [not_null]
+
+  - name: stg_payment_method
+    description: "랜딩→canonical 결제수단별 (4원장 통합)"
+    columns:
+      - name: pm_id
+        tests: [unique, not_null]
+      - name: method
+        description: "결제수단 코드"
+        tests:
+          - not_null
+          - accepted_values: { values: [1, 2, 3, 4] }   # 카드·머니·포인트·쿠폰만
+
+  - name: stg_order_item
+    columns:
+      - name: partner_id
+        tests: [not_null]
+
+  # ===== 마트: 불변 원장·집계 무결성 =====
+  - name: settlement_event
+    description: "불변 정산 원장 (라인×결제수단, freeze)"
+    columns:
+      - name: event_id
+        description: "멱등 dedup 키 brand:txn:line:method"
+        tests: [unique, not_null]          # ★ 이벤트 유일성 (중복 정산 방지)
+      - name: partner_id
+        tests:
+          - not_null
+          - relationships:                 # ★ 고아 방지: 모든 partner_id는 partner에 존재
+              to: ref('partner')
+              field: partner_id
+      - name: method
+        tests:
+          - accepted_values: { values: [1, 2, 3, 4] }
+
+  - name: settlement_agg
+    description: "결제수단별 정산 명세 (정산일×파트너×브랜드×결제수단)"
+    columns:
+      - name: partner_id
+        tests: [not_null]
+      - name: payout
+        description: "지급액 = net - fee"
+        tests: [not_null]

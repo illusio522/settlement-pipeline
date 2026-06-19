@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 5s      # 5초마다 수집 (실시간 곡선용)
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: kafka
+    static_configs:
+      - targets: ['kafka-exporter:9308']   # 카프카 컨슈머 LAG·오프셋·메시지율
+
+  - job_name: normalize-app               # ★ 자바 컨슈머 앱 (호스트서 bootRun → host.docker.internal)
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8090']   # JVM·컨슈머·랜딩 적재율

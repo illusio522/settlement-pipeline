@@ -1,0 +1,27 @@
+plugins {
+    java
+    id("org.springframework.boot") version "3.3.5"
+    id("io.spring.dependency-management") version "1.1.6"
+}
+
+group = "com.settlement"
+version = "0.1.0"
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+repositories { mavenCentral() }
+
+dependencies {
+    implementation("org.springframework.boot:spring-boot-starter")
+    implementation("org.springframework.boot:spring-boot-starter-json")   // Jackson(JSON 파싱)
+    implementation("org.springframework.kafka:spring-kafka")              // @KafkaListener
+    implementation("org.springframework.boot:spring-boot-starter-actuator")     // 메트릭 엔드포인트
+    implementation("org.springframework.boot:spring-boot-starter-web")          // /actuator/prometheus 노출용
+    implementation("io.micrometer:micrometer-registry-prometheus")              // Prometheus 형식 메트릭
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.kafka:spring-kafka-test")
+}
+
+tasks.test { useJUnitPlatform() }

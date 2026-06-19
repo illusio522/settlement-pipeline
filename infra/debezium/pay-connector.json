@@ -1,0 +1,23 @@
+{
+  "name": "pay-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "settle",
+    "database.password": "settle",
+    "database.dbname": "paydb",
+    "plugin.name": "pgoutput",
+    "publication.name": "dbz_pay",
+    "slot.name": "dbz_pay_slot",
+    "topic.prefix": "pay",
+    "snapshot.mode": "initial",
+    "table.include.list": "public.payment,public.payment_card,public.payment_money,public.payment_point,public.payment_coupon",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter.schemas.enable": "false",
+    "decimal.handling.mode": "double",
+    "time.precision.mode": "connect"
+  }
+}

@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>파트너 정산 파이프라인 — 아키텍처</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#1a1d24; --panel2:#21252e; --border:#2c313c;
+    --txt:#e6e8ec; --muted:#9aa3b2; --accent:#5aa0ff; --accent2:#7c5cff;
+    --src:#3b82f6; --pipe:#10b981; --derive:#f59e0b; --agg:#a855f7; --recon:#ef4444; --close:#14b8a6; --ops:#64748b;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+    background:var(--bg);color:var(--txt);font-size:15px;line-height:1.6}
+  header{padding:18px 20px 12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:20}
+  h1{margin:0 0 2px;font-size:20px}
+  .sub{color:var(--muted);font-size:13px;margin:0}
+  .tabs{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .tab{padding:7px 14px;border-radius:20px;border:1px solid var(--border);background:var(--panel);
+    color:var(--muted);cursor:pointer;font-weight:600;font-size:13px;user-select:none}
+  .tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .wrap{display:grid;grid-template-columns:1fr 360px;gap:0;min-height:calc(100vh - 110px)}
+  @media(max-width:900px){.wrap{grid-template-columns:1fr}}
+  .canvas{padding:22px 18px 60px;overflow:auto}
+  .panel{border-left:1px solid var(--border);background:var(--panel);padding:18px 18px 60px;position:sticky;top:110px;height:calc(100vh - 110px);overflow:auto}
+  @media(max-width:900px){.panel{position:static;height:auto;border-left:none;border-top:1px solid var(--border)}}
+
+  /* flow */
+  .layer{margin:0 0 6px}
+  .layer-label{font-size:11px;letter-spacing:.5px;color:var(--muted);text-transform:uppercase;margin:14px 0 8px;font-weight:700}
+  .row{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
+  .node{min-width:150px;max-width:230px;flex:1;background:var(--panel);border:1px solid var(--border);
+    border-radius:12px;padding:12px 14px;cursor:pointer;transition:.15s;border-left:4px solid var(--ops);position:relative}
+  .node:hover{transform:translateY(-2px);background:var(--panel2);box-shadow:0 6px 20px rgba(0,0,0,.35)}
+  .node.active{outline:2px solid var(--accent);background:var(--panel2)}
+  .node .nt{font-weight:700;font-size:14px;margin-bottom:3px}
+  .node .nd{font-size:12px;color:var(--muted);line-height:1.4}
+  .node .tech{display:inline-block;margin-top:7px;font-size:10.5px;background:var(--panel2);color:var(--accent);
+    padding:2px 7px;border-radius:10px;border:1px solid var(--border)}
+  .badge{position:absolute;top:8px;right:8px;font-size:9px;color:var(--muted)}
+  .src{border-left-color:var(--src)} .pipe{border-left-color:var(--pipe)}
+  .derive{border-left-color:var(--derive)} .agg{border-left-color:var(--agg)}
+  .recon{border-left-color:var(--recon)} .close{border-left-color:var(--close)} .ops{border-left-color:var(--ops)}
+  .arrow{text-align:center;color:var(--muted);font-size:18px;margin:2px 0;position:relative}
+  .arrow span{font-size:11px;background:var(--bg);padding:0 8px;color:var(--accent)}
+
+  /* detail panel */
+  .ph{color:var(--muted);font-size:13px;text-align:center;margin-top:40px}
+  .d-title{font-size:17px;font-weight:800;margin:0 0 2px}
+  .d-tech{display:inline-block;font-size:11px;background:var(--panel2);color:var(--accent);padding:2px 9px;border-radius:10px;border:1px solid var(--border);margin-bottom:10px}
+  .d-sec{font-size:11px;letter-spacing:.5px;color:var(--muted);text-transform:uppercase;font-weight:700;margin:14px 0 5px}
+  .d-role{font-size:14px;margin:0 0 4px}
+  ul.d{margin:4px 0;padding-left:18px} ul.d li{margin:4px 0;font-size:13px}
+  table.sch{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
+  table.sch td{border:1px solid var(--border);padding:4px 7px} table.sch td.c{color:var(--accent);font-family:ui-monospace,monospace;white-space:nowrap}
+  table.sch td.t{color:var(--muted);font-family:ui-monospace,monospace;font-size:11px}
+  .hl{background:rgba(245,158,11,.12);border-left:3px solid var(--derive);padding:8px 10px;border-radius:0 8px 8px 0;font-size:13px;margin:10px 0}
+
+  /* schema view */
+  .schwrap{display:none;padding:22px 18px 60px}
+  .schwrap.show{display:block} .flowwrap.hide{display:none}
+  .goalwrap{display:none;padding:22px 18px 60px} .goalwrap.show{display:block}
+  .domainwrap{display:none;padding:22px 18px 60px} .domainwrap.show{display:block}
+  .domain{border:2px solid var(--border);border-radius:14px;padding:14px 16px 16px;margin-bottom:8px;background:rgba(255,255,255,.015)}
+  .domain-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+  .domain-h .dn{font-size:16px;font-weight:800}
+  .domain-h .ddb{font-size:11px;font-family:ui-monospace,monospace;background:var(--panel2);padding:2px 8px;border-radius:8px;border:1px solid var(--border);color:var(--muted)}
+  .domain-h .down{font-size:11px;color:var(--muted)}
+  .domain-note{font-size:12.5px;color:var(--muted);margin:0 0 10px}
+  .domain .row{justify-content:flex-start}
+  .domain .node{min-width:130px;max-width:200px}
+  .dom-arrow{text-align:center;color:var(--recon);font-size:13px;font-weight:700;margin:4px 0 10px;letter-spacing:.3px}
+  .schcard{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px;border-left:4px solid var(--ops)}
+  .schcard h3{margin:0 0 8px;font-size:15px}
+  .goal{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+  .goal h3{margin:0 0 6px;font-size:15px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin:6px 0 14px;font-size:12px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .dot{width:10px;height:10px;border-radius:3px;display:inline-block}
+</style>
+</head>
+<body>
+<header>
+  <h1>파트너 정산 파이프라인 — 아키텍처</h1>
+  <p class="sub">순수 결제 데이터 기반 · 결제 ⋈ 주문상품 조인+배분 · 증분 멱등 집계 · 노드 클릭 = 상세</p>
+  <div class="tabs">
+    <div class="tab active" data-view="flow">🔀 아키텍처 흐름</div>
+    <div class="tab" data-view="sch">🗂 스킴 상세</div>
+    <div class="tab" data-view="goal">🎯 4대 목표</div>
+    <div class="tab" data-view="domain">🗄 도메인(DB)</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="canvas">
+    <!-- FLOW -->
+    <div class="flowwrap" id="flowwrap">
+      <div class="legend">
+        <span><i class="dot" style="background:var(--src)"></i>소스</span>
+        <span><i class="dot" style="background:var(--pipe)"></i>수집/전송</span>
+        <span><i class="dot" style="background:var(--derive)"></i>파생(조인·배분)</span>
+        <span><i class="dot" style="background:var(--agg)"></i>집계</span>
+        <span><i class="dot" style="background:var(--recon)"></i>대사</span>
+        <span><i class="dot" style="background:var(--close)"></i>마감/지급</span>
+      </div>
+
+      <div class="layer-label">Layer 1 · 상류 소스 — CDC만 (정산이 소유 X)</div>
+      <div class="row">
+        <div class="node src" data-id="payment"><div class="nt">payment</div><div class="nd">결제 원장 · MID·총액 (★partner 없음)</div><span class="tech">결제 도메인</span><span class="badge">CDC · 최대 1억</span></div>
+        <div class="node src" data-id="order_item"><div class="nt">order_item</div><div class="nd">주문상품 · partner 등장</div><span class="tech">주문 도메인</span><span class="badge">CDC</span></div>
+      </div>
+      <div class="arrow">│ <span>결제·주문만 CDC · WAL 테일링·Outbox</span></div>
+      <div class="row">
+        <div class="node pipe" data-id="cdc"><div class="nt">Debezium (CDC)</div><div class="nd">★ 결제·주문만 (마스터는 안 끌어옴)</div><span class="tech">Kafka Connect</span></div>
+      </div>
+      <div class="arrow">▼</div>
+      <div class="row">
+        <div class="node pipe" data-id="kafka"><div class="nt">Kafka (KRaft)</div><div class="nd">버퍼·디커플·재처리</div><span class="tech">apache/kafka</span></div>
+        <div class="node pipe" data-id="lake"><div class="nt">MinIO + Iceberg</div><div class="nd">정산 레이크 복제본 (projection)</div><span class="tech">S3 호환</span></div>
+      </div>
+
+      <div class="arrow">▼ <span>조인 + 배분 + ★FREEZE (집계 시, dbt)</span></div>
+      <div class="row">
+        <div class="node derive" data-id="join"><div class="nt">조인·배분·FREEZE</div><div class="nd">payment ⋈ order_item(order_no) → partner_id · 금액 배분</div><span class="tech">dbt</span></div>
+        <div class="node derive" data-id="partner_contract"><div class="nt">partner_contract</div><div class="nd">fee_rate point-in-time → freeze 입력</div><span class="tech">정산 보유</span></div>
+      </div>
+      <div class="arrow">▼</div>
+      <div class="layer-label">Layer 2 · ★ 불변 정산 원장 (FREEZE)</div>
+      <div class="row">
+        <div class="node derive" data-id="settlement_event"><div class="nt">settlement_event</div><div class="nd">★ allocated·fee_rate·fee·net 값 박제(불변) · 멱등 event_id</div><span class="tech">Iceberg (append-only)</span></div>
+      </div>
+
+      <div class="arrow">▼ <span>증분 멱등 집계 — 박제값 합산만</span></div>
+      <div class="row">
+        <div class="node agg" data-id="aggjob"><div class="nt">증분 멱등 집계</div><div class="nd">박제값 합산 → (정산일+partner+brand) upsert</div><span class="tech">dbt + DuckDB</span></div>
+      </div>
+      <div class="arrow">▼</div>
+      <div class="layer-label">Layer 3 · 집계</div>
+      <div class="row">
+        <div class="node agg" data-id="settlement_agg"><div class="nt">settlement_agg</div><div class="nd">일 200행 (gross/net/fee/payout)</div><span class="tech">DuckDB</span></div>
+      </div>
+
+      <div class="arrow">▼ <span>MID 단위 3자 대사</span></div>
+      <div class="layer-label">Layer 4 · 대사</div>
+      <div class="row">
+        <div class="node src" data-id="mid_map"><div class="nt">mid_map</div><div class="nd">MID↔brand · 대사 시 MID 롤업 (버전 스냅샷)</div><span class="tech">스냅샷</span></div>
+        <div class="node recon" data-id="pg_file"><div class="nt">pg_settlement_file</div><div class="nd">PG 정산내역 (대사 소스)</div><span class="tech">파일</span></div>
+        <div class="node recon" data-id="recon"><div class="nt">recon_result</div><div class="nd">결제원천=집계=PG파일 3자 비교</div><span class="tech">컨트롤토탈</span></div>
+      </div>
+
+      <div class="arrow">▼</div>
+      <div class="layer-label">Layer 5·6 · 마감 / 지급</div>
+      <div class="row">
+        <div class="node close" data-id="close"><div class="nt">settlement_close</div><div class="nd">동결·불변 · 역분개 정정</div><span class="tech">마감</span></div>
+        <div class="node close" data-id="payout"><div class="nt">payout</div><div class="nd">partner별 지급액 (박제값 기반)</div><span class="tech">지급</span></div>
+        <div class="node src" data-id="partner"><div class="nt">partner</div><div class="nd">이름·계좌 등 표시 · 지급 시 lazy join</div><span class="tech">스냅샷</span></div>
+      </div>
+
+      <div class="arrow">┄┄ 운영(횡단) ┄┄</div>
+      <div class="row">
+        <div class="node ops" data-id="dlq"><div class="nt">dead_letter</div><div class="nd">실패 이벤트 격리·재처리</div><span class="tech">운영</span></div>
+        <div class="node ops" data-id="offset"><div class="nt">processed_offset</div><div class="nd">증분 watermark·체크포인트</div><span class="tech">운영</span></div>
+      </div>
+    </div>
+
+    <!-- SCHEMA -->
+    <div class="schwrap" id="schwrap"></div>
+    <!-- GOALS -->
+    <div class="goalwrap" id="goalwrap"></div>
+    <!-- DOMAINS -->
+    <div class="domainwrap" id="domainwrap"></div>
+  </div>
+
+  <aside class="panel" id="panel">
+    <div class="ph" id="ph">← 노드를 클릭하면 상세(역할·기술·스킴·핵심)가 여기 표시됩니다</div>
+    <div id="detail" style="display:none"></div>
+  </aside>
+</div>
+
+<script>
+const NODES = {
+  payment:{title:"payment — 결제 원장",tech:"PostgreSQL (소스)",color:"--src",
+    role:"결제 시스템(페이먼츠/PG)이 내놓는 날것의 결제 원장. 돈이 오갔다는 사실만 기록.",
+    points:["★ 정산 대상 partner가 <b>없다</b> — MID(가맹점/브랜드)·총액까지만 앎","최대 1억 row → 납작하게(narrow)","PK=txn_id, 금액은 BIGINT(원)","취소·환불은 orig_txn_id로 원거래 참조"],
+    sch:[["txn_id","BIGINT PK","거래/승인 ID"],["payments_mid","INT","페이먼츠 MID(→PG MID·brand)"],["order_no","BIGINT","주문번호(조인 키)"],["amount","BIGINT","결제 총액(원)"],["type","SMALLINT","1=PAY,2=CANCEL,3=REFUND"],["orig_txn_id","BIGINT NULL","원거래 참조"],["approved_at","TIMESTAMPTZ","승인일시"]]},
+  order_item:{title:"order_item — 주문상품",tech:"PostgreSQL (소스)",color:"--src",
+    role:"커머스(주문) 도메인의 데이터. 어느 주문에 어느 셀러 상품이 팔렸는지.",
+    points:["★ partner_id가 <b>여기서 처음 등장</b>","한 주문에 여러 partner 가능(장바구니)","결제 총액을 라인별로 배분(allocation)하는 근거","partner 스큐(무신사 입점사 70%)는 여기서 주입"],
+    sch:[["order_no","BIGINT","조인 키"],["line_no","SMALLINT","주문 내 라인"],["partner_id","INT","입점업체(정산 대상)"],["brand","SMALLINT","1=musinsa,2=29cm"],["item_amount","BIGINT","상품 금액"]]},
+  dims:{title:"mid_map · partner — 디멘전",tech:"PostgreSQL",color:"--src",
+    role:"매핑/참조 데이터. 1억 팩트에 안 박고 조인(작아서 공짜).",
+    points:["mid_map: payments_mid ↔ pg_mid ↔ brand","partner: partner_id ↔ fee_rate","fee_rate를 팩트에 안 박아 공간 절약"],
+    sch:[["payments_mid","INT PK","mid_map"],["pg_mid / brand","TEXT/SMALLINT",""],["partner_id","INT PK","partner"],["fee_rate","NUMERIC(5,4)","수수료율"]]},
+  cdc:{title:"Debezium — CDC",tech:"Kafka Connect",color:"--pipe",
+    role:"결제·주문 DB의 트랜잭션 로그(WAL)를 테일링해 변경을 캡처. Outbox로 깔끔한 이벤트.",
+    points:["★ <b>결제·주문(이벤트성·대량)만</b> CDC","테이블 풀스캔 X → 소스 쿼리부하 ≈ 0","Outbox로 내부스키마↔이벤트 디커플링","at-least-once → 소비자 멱등 필요","결제 커넥터·주문 커넥터 각 1개"]},
+  snapshot:{title:"스냅샷 동기화",tech:"배치 (일 1회)",color:"--pipe",
+    role:"파트너·MID 마스터처럼 거의 안 변하는 소량 참조 데이터를 주기 덤프로 동기화.",
+    points:["★ 마스터/참조 = CDC 아님 (오버엔지니어링)","일 1회(또는 정산 직전) 전체 복제 — 작아서 순식간","원칙: 이벤트성=CDC, 마스터=스냅샷","partner_contract(수수료)는 정산이 직접 보유 → 동기화도 불필요"]},
+  kafka:{title:"Kafka (KRaft)",tech:"apache/kafka 3.8",color:"--pipe",
+    role:"경량 로그 버퍼. 소스와 정산을 디커플, 재처리·확장 기반.",
+    points:["KRaft 모드 → ZooKeeper 불필요","리텐션 = 재처리 창보다 길게","오프셋 = 증분 watermark","운영은 MSK/Confluent로 교체해도 코드 동일"]},
+  lake:{title:"MinIO + Iceberg",tech:"S3 호환 + 레이크포맷",color:"--pipe",
+    role:"오브젝트스토리지 컬럼나 레이크. 1억 성능경로의 저장소.",
+    points:["Parquet 컬럼나 + 날짜 파티션 → 스캔 최소","schema-on-read(mergeSchema) → 스키마 진화 무마찰","콜드 보관 → 재처리·대사·감사","💰 가장 저렴한 스토리지"]},
+  join:{title:"조인·배분·FREEZE",tech:"dbt (집계 시)",color:"--derive",
+    role:"payment ⋈ order_item(order_no)로 partner_id 귀속 → 금액 배분 → 거래시점 fee_rate as-of 조인 후 박제.",
+    points:["매핑: <b>order_no</b>→order_item의 <b>partner_id</b>","fee_rate = partner_contract <b>as-of 조인</b>(effective_from≤거래일)","배분: (a)item_amount 비율 → (b)할인 안분. fee=배분액×fee_rate","★ 결과를 settlement_event에 <b>박제(freeze)</b>","미아(주문 미도착): pending 재시도 → 초과 시 dead_letter"]},
+  settlement_event:{title:"settlement_event — 불변 정산 원장",tech:"Iceberg (append-only)",color:"--derive",
+    role:"★ FREEZE 지점. 조인+배분 결과를 거래시점 값으로 박제한 불변 원장. 지급의 진실.",
+    points:["★ allocated·fee_rate·fee·net을 <b>거래시점 값으로 박제(freeze)</b>","append-only → 재집계해도 동일(재현성·감사)","event_id = txn_id+line_no → 멱등 dedup","마스터 정정돼도 과거 정산 불변(필요시 역분개)"],
+    sch:[["event_id","TEXT PK","멱등 dedup"],["txn_id / order_no / line_no","","원천 참조"],["partner_id","INT","귀속"],["brand","SMALLINT",""],["type","SMALLINT",""],["allocated_amount","BIGINT","배분 금액"],["fee_rate / fee","","수수료"],["net_amount","BIGINT","allocated−fee"],["event_time / settlement_date","",""]]},
+  aggjob:{title:"증분 멱등 집계",tech:"dbt + DuckDB",color:"--agg",
+    role:"5~15분 트리거 증분 배치. (정산일+partner+brand) 단위 멱등 upsert.",
+    points:["증분 → 전량 재처리 X, 피크 평탄화","멱등 upsert / delete-then-insert (누적 += 금지)","dbt 선언적 SQL + 데이터테스트 + 리니지","저카디널리티 GROUP BY → 스캔이 지배"]},
+  settlement_agg:{title:"settlement_agg — 집계",tech:"DuckDB",color:"--agg",
+    role:"파트너별 정산 집계 결과. 입력 1억, 출력 일 200행.",
+    points:["PK=(settlement_date,partner_id,brand)","gross/cancel/refund/net/fee/payout/cnt","재집계해도 동일(멱등)"],
+    sch:[["settlement_date","DATE",""],["partner_id","INT",""],["brand","SMALLINT",""],["gross/cancel/refund","BIGINT",""],["net","BIGINT","gross−cancel−refund"],["fee/payout","BIGINT","payout=net−fee"],["txn_count","BIGINT",""]]},
+  pg_file:{title:"pg_settlement_file",tech:"파일",color:"--recon",
+    role:"PG가 주는 정산내역(대사 소스). MID 단위.",
+    points:["우리 집계와 대조할 외부 진실","MID(가맹점) 단위로 옴"],
+    sch:[["settlement_date","DATE",""],["payments_mid","INT",""],["pg_amount/pg_fee","BIGINT",""]]},
+  recon:{title:"recon_result — 대사",tech:"컨트롤토탈",color:"--recon",
+    role:"3자 컨트롤토탈 비교: 결제 원천합 = 집계합(MID 롤업) = PG파일합.",
+    points:["대사는 MID(가맹점) 단위 — PG가 MID로 정산하니","파티션 체크섬으로 불일치 구간만 상세","불일치 자동탐지→알림→보정, 불일치 0 목표"],
+    sch:[["settlement_date / payments_mid","",""],["src_total","BIGINT","결제 원천"],["agg_total","BIGINT","집계(롤업)"],["pg_total","BIGINT","PG 파일"],["diff / status","","0=MATCHED"]]},
+  close:{title:"settlement_close — 마감",tech:"마감",color:"--close",
+    role:"정산일 동결. 마감 후 불변, 정정은 역분개.",
+    points:["마감 후 수정 금지 → 감사·재현 보장","control_total 보관","정정은 다음 기간 조정 엔트리(역분개)"],
+    sch:[["settlement_date","DATE PK",""],["status","SMALLINT","0=OPEN,1=CLOSED"],["control_total","BIGINT",""],["closed_at","TIMESTAMPTZ",""]]},
+  payout:{title:"payout — 지급",tech:"지급",color:"--close",
+    role:"파트너별 확정 지급액.",
+    points:["PK=(settlement_date,partner_id)","마감 확정분 기반 송금 데이터"],
+    sch:[["settlement_date / partner_id","",""],["payout_amount","BIGINT",""],["status","SMALLINT",""]]},
+  dlq:{title:"dead_letter — 실패 격리",tech:"운영",color:"--ops",
+    role:"처리 실패 이벤트를 격리 적재 후 별도 재처리.",
+    points:["한 건 실패가 전체 배치를 막지 않음","재처리 워커(지수 백오프)","영구 실패는 수동 큐"],
+    sch:[["id","BIGINT PK",""],["raw_payload","JSONB",""],["error / retry_count","",""],["failed_at","TIMESTAMPTZ",""]]},
+  offset:{title:"processed_offset — 체크포인트",tech:"운영",color:"--ops",
+    role:"증분 watermark/오프셋 영속화. 죽어도 그 지점부터 재개.",
+    points:["오프셋=watermark, 원자적 커밋","재시작 가능(restartable)의 핵심"],
+    sch:[["stream","TEXT PK",""],["last_offset","BIGINT",""],["updated_at","TIMESTAMPTZ",""]]},
+  mid_map:{title:"mid_map — MID 매핑",tech:"결제 도메인",color:"--src",
+    role:"페이먼츠 MID ↔ PG사 MID ↔ brand 매핑. 결제 도메인 소유.",
+    points:["결제가 받은 가맹점(MID) 식별","brand(무신사/29cm) 파생 근거","대사를 MID 단위로 하는 기준"],
+    sch:[["payments_mid","INT PK",""],["pg_mid","TEXT",""],["brand","SMALLINT",""]]},
+  partner:{title:"partner — 입점업체 마스터",tech:"주문 도메인",color:"--pipe",
+    role:"입점업체(셀러) 식별 마스터. 커머스/주문 도메인 소유. ★ CDC 아닌 스냅샷 동기화.",
+    points:["★ 정산 대상 partner의 정체 = 커머스 소유","결제 도메인엔 존재하지 않음","마스터·소량·거의 불변 → <b>스냅샷(일1회)</b>, CDC 과함","fee_rate(수수료)는 별도 — partner_contract(정산 소유)"],
+    sch:[["partner_id","INT PK",""],["name","TEXT",""],["brand","SMALLINT","주력 브랜드"]]},
+  partner_contract:{title:"partner_contract — 수수료 계약",tech:"정산 도메인",color:"--derive",
+    role:"파트너별 정산 수수료율. ★ 수수료는 정산 도메인의 책임(커머스 아님).",
+    points:["fee_rate는 '정산 계약' 속성 → 정산 DB 소유","effective_from으로 시점별 수수료 적용","배분 금액 × fee_rate = fee"],
+    sch:[["partner_id","INT",""],["fee_rate","NUMERIC(5,4)",""],["effective_from","DATE","시점 적용"]]},
+};
+
+const GOALS=[
+ {t:"⚡ 고성능",c:"--src",items:["CDC 로그테일링(소스 부하 0)","컬럼나 Parquet + 파티션 프루닝","파티션 병렬 + 핫파트너 서브파티셔닝","대사 합계 우선(전수조인 회피)"]},
+ {t:"💰 저비용",c:"--pipe",items:["오브젝트스토리지(MinIO/S3)","증분(전량 재처리 X)","버스트 컴퓨트(24/7 X)","멱등 재처리 / DuckDB 단일노드 · Kafka KRaft"]},
+ {t:"🚀 빠른 처리속도",c:"--agg",items:["실시간 CDC 캡처","증분 피크 평탄화 → 마감 가벼움","스큐 제거로 롱테일 단축","합계 우선 대사로 즉시 판정"]},
+ {t:"🔧 유지보수",c:"--close",items:["Outbox 디커플링 / Iceberg 스키마 진화","dbt 선언적 + 데이터테스트 + 리니지","멱등·replay → 장애복구 단순","관측·DAG·표준도구"]},
+];
+
+// render detail
+function showDetail(id){
+  const n=NODES[id]; if(!n) return;
+  document.querySelectorAll('.node').forEach(e=>e.classList.toggle('active',e.dataset.id===id));
+  document.getElementById('ph').style.display='none';
+  const d=document.getElementById('detail'); d.style.display='block';
+  let h=`<div class="d-title" style="color:var(${n.color})">${n.title}</div><span class="d-tech">${n.tech}</span>`;
+  h+=`<div class="d-sec">역할</div><p class="d-role">${n.role}</p>`;
+  if(n.points){h+=`<div class="d-sec">핵심 포인트</div><ul class="d">`+n.points.map(p=>`<li>${p}</li>`).join('')+`</ul>`;}
+  if(n.sch){h+=`<div class="d-sec">스킴</div><table class="sch">`+n.sch.map(r=>`<tr><td class="c">${r[0]}</td><td class="t">${r[1]||''}</td><td>${r[2]||''}</td></tr>`).join('')+`</table>`;}
+  d.innerHTML=h;
+  if(window.innerWidth<=900) document.getElementById('panel').scrollIntoView({behavior:'smooth'});
+}
+// 이벤트 위임 — 정적(흐름) + 동적(도메인) 노드 모두 처리
+document.addEventListener('click',e=>{const n=e.target.closest('.node'); if(n&&n.dataset.id) showDetail(n.dataset.id);});
+
+// schema view
+const schEl=document.getElementById('schwrap');
+schEl.innerHTML=Object.keys(NODES).filter(k=>NODES[k].sch).map(k=>{
+  const n=NODES[k];
+  return `<div class="schcard" style="border-left-color:var(${n.color})"><h3>${n.title}</h3>`+
+    `<table class="sch">`+n.sch.map(r=>`<tr><td class="c">${r[0]}</td><td class="t">${r[1]||''}</td><td>${r[2]||''}</td></tr>`).join('')+`</table></div>`;
+}).join('');
+
+// goals view
+document.getElementById('goalwrap').innerHTML=GOALS.map(g=>
+  `<div class="goal" style="border-left:4px solid var(${g.c})"><h3 style="color:var(${g.c})">${g.t}</h3><ul class="d">`+
+  g.items.map(i=>`<li>${i}</li>`).join('')+`</ul></div>`).join('');
+
+// domain (DB 소유권 = 바운디드 컨텍스트) view
+const DOMAINS=[
+ {name:"결제 도메인",db:"Payments DB",owner:"페이먼츠/PG 소유",note:"돈이 오갔다 — MID·총액·시각. ★ 정산 대상 partner가 없다.",members:["payment","mid_map"]},
+ {name:"주문 도메인",db:"Commerce/Order DB",owner:"커머스 소유",note:"무엇이 팔렸나 — 주문상품에서 partner(입점업체)가 비로소 등장.",members:["order_item","partner"]},
+ {name:"정산 도메인",db:"Settlement DB",owner:"우리가 구축·소유",note:"상류(결제·주문)를 CDC로 읽어와 조인+배분해 파생. 상류를 소유하지 않는다. 수수료 계약도 여기 소유.",members:["partner_contract","settlement_event","settlement_agg","pg_file","recon","close","payout","dlq","offset"]},
+];
+function nodeCard(id){const n=NODES[id];return `<div class="node" data-id="${id}" style="border-left-color:var(${n.color})"><div class="nt">${n.title.split(' — ')[0]}</div><div class="nd">${(n.title.split(' — ')[1]||'')}</div><span class="tech">${n.tech}</span></div>`;}
+document.getElementById('domainwrap').innerHTML=DOMAINS.map((d,i)=>{
+  const c=i===0?'--src':i===1?'--pipe':'--derive';
+  let h=`<div class="domain" style="border-color:var(${c})"><div class="domain-h"><span class="dn" style="color:var(${c})">${d.name}</span><span class="ddb">${d.db}</span><span class="down">· ${d.owner}</span></div><p class="domain-note">${d.note}</p><div class="row">`+
+    d.members.map(nodeCard).join('')+`</div></div>`;
+  if(i<2) h+=`<div class="dom-arrow">⬇ CDC (로그 테일링 · 소유 경계를 이벤트로 넘김) ⬇</div>`;
+  return h;
+}).join('');
+
+// tabs
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); t.classList.add('active');
+  const v=t.dataset.view;
+  document.getElementById('flowwrap').classList.toggle('hide',v!=='flow');
+  document.getElementById('schwrap').classList.toggle('show',v==='sch');
+  document.getElementById('goalwrap').classList.toggle('show',v==='goal');
+  document.getElementById('domainwrap').classList.toggle('show',v==='domain');
+}));
+</script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: settlement-normalize
+  kafka:
+    bootstrap-servers: localhost:29092      # 2-2에서 뚫어둔 호스트 통로(PLAINTEXT_HOST)
+    listener:
+      concurrency: 8                         # ★ 컨슈머 스레드 8개 (파티션 수만큼 병렬 소비)
+    consumer:
+      group-id: normalize-sink
+      max-poll-records: 2000                 # 한 번에 더 많이 가져와 처리량↑
+      auto-offset-reset: earliest            # 처음 붙으면 토픽 맨 앞부터(재처리 가능)
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        metadata.max.age.ms: 10000           # 새 토픽 자동 발견 주기(패턴 구독용)
+        # ★ 배분 전략: 기본 Range는 토픽별 배분이라 8스레드 중 4명만 일함(토픽당 4파티션<8).
+        #   CooperativeSticky = 28파티션을 8명에 고루(3~4개씩) + 협력적 리밸런스(옮길 것만 멈춤).
+        partition.assignment.strategy: org.apache.kafka.clients.consumer.CooperativeStickyAssignor
+
+server:
+  port: 8090                                 # actuator 메트릭 노출 포트 (다른 서비스와 충돌 회피)
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: prometheus, health          # /actuator/prometheus 노출
+  metrics:
+    tags:
+      application: settlement-normalize       # 모든 메트릭에 앱 태그
+
+app:
+  landing-dir: ../data/landing               # NDJSON 랜딩 경로 (.duckdb 안 건드림)
+  topics-pattern: "(pay|order)\\.public\\..*"  # CDC 토픽 전체 패턴 구독
+
+logging:
+  level:
+    com.settlement: INFO
+    org.apache.kafka.clients.NetworkClient: WARN
