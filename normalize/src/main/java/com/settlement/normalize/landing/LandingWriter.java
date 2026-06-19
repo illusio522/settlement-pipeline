@@ -20,10 +20,12 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 쓰기 시점(B 방식): canonical 레코드를 테이블별 NDJSON 파일에 append.
- *  - ★ 병렬화: JSON 직렬화는 락 밖에서, 쓰기는 테이블별 락(holder) → 서로 다른 테이블 동시 쓰기 허용.
- *    (전역 synchronized → 테이블별 lock 으로 변경, 컨슈머 concurrency와 함께 병렬 처리량 ↑)
- *  - 각 줄에 메타: _op(c/u/d/r), _seq(LSN). 파일: <landing-dir>/<table>.ndjson
+ * 쓰기 시점(B 방식): canonical 레코드를 테이블-파티션별 NDJSON 샤드 파일에 append.
+ *  - ★ 병렬화: JSON 직렬화는 락 밖에서, 쓰기는 (테이블,파티션)별 락(holder).
+ *  - ★ 샤딩(Phase5): 파일을 Kafka 파티션별로 분리 → <table>.p<partition>.ndjson.
+ *    한 파티션=한 스레드(Kafka 보장)라 같은 샤드는 한 스레드만 씀 → 락 경합 0, 진짜 병렬 쓰기.
+ *    (단일 토픽 order_item: p0~3을 sink-5~8이 각자 전용 파일에 → 단일락 천장 제거)
+ *  - 각 줄에 메타: _op(c/u/d/r), _seq(LSN). 읽기측은 <table>.p*.ndjson 글롭으로 모든 샤드 dedup.
  */
 @Component
 public class LandingWriter {
@@ -47,7 +49,7 @@ public class LandingWriter {
         this.dir = Paths.get(landingDir);
     }
 
-    public void write(CanonicalRecord rec) {
+    public void write(CanonicalRecord rec, int partition) {
         // 1) 직렬화는 락 밖에서 (CPU 작업 병렬)
         Map<String, Object> line = new LinkedHashMap<>();
         line.put("_op", opCode(rec.op()));
@@ -59,8 +61,9 @@ public class LandingWriter {
         } catch (IOException e) {
             throw new RuntimeException("직렬화 실패 table=" + rec.table(), e);
         }
-        // 2) 쓰기는 테이블별 holder 락만 (다른 테이블끼리 병렬)
-        Holder h = holderFor(rec.table());
+        // 2) 쓰기는 (테이블,파티션)별 holder 락 → 같은 샤드는 한 스레드만 → 경합 0
+        //    샤드 키 = <table>.p<partition> → 파일 <table>.p<partition>.ndjson
+        Holder h = holderFor(rec.table() + ".p" + partition);
         synchronized (h) {
             try {
                 h.writer.write(json);

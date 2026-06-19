@@ -22,25 +22,25 @@ SET s3_secret_access_key='minio12345'; SET s3_use_ssl=false; SET s3_url_style='p
 COPY (
   SELECT txn_id, order_no, brand, amount, type, orig_txn_id, epoch_ms(event_time) AS event_time
   FROM (SELECT *, row_number() OVER (PARTITION BY txn_id ORDER BY _seq DESC) rn
-        FROM read_json_auto('/work/data/landing/payment.ndjson')) WHERE rn=1 AND _op<>'d'
+        FROM read_json_auto('/work/data/landing/payment.p*.ndjson')) WHERE rn=1 AND _op<>'d'
 ) TO 's3://lake/iceberg/payment' (FORMAT ICEBERG);
 
 COPY (
   SELECT pm_id, txn_id, order_no, method, payments_mid, amount, type, epoch_ms(event_time) AS event_time
   FROM (SELECT *, row_number() OVER (PARTITION BY pm_id ORDER BY _seq DESC) rn
-        FROM read_json_auto('/work/data/landing/payment_method.ndjson')) WHERE rn=1 AND _op<>'d'
+        FROM read_json_auto('/work/data/landing/payment_method.p*.ndjson')) WHERE rn=1 AND _op<>'d'
 ) TO 's3://lake/iceberg/payment_method' (FORMAT ICEBERG);
 
 COPY (
   SELECT order_no, line_no, partner_id, brand, item_amount
   FROM (SELECT *, row_number() OVER (PARTITION BY order_no, line_no ORDER BY _seq DESC) rn
-        FROM read_json_auto('/work/data/landing/order_item.ndjson')) WHERE rn=1 AND _op<>'d'
+        FROM read_json_auto('/work/data/landing/order_item.p*.ndjson')) WHERE rn=1 AND _op<>'d'
 ) TO 's3://lake/iceberg/order_item' (FORMAT ICEBERG);
 
 COPY (
   SELECT cancel_txn_id, order_no, line_no
   FROM (SELECT *, row_number() OVER (PARTITION BY cancel_txn_id, order_no, line_no ORDER BY _seq DESC) rn
-        FROM read_json_auto('/work/data/landing/cancel.ndjson')) WHERE rn=1 AND _op<>'d'
+        FROM read_json_auto('/work/data/landing/cancel.p*.ndjson')) WHERE rn=1 AND _op<>'d'
 ) TO 's3://lake/iceberg/cancel' (FORMAT ICEBERG);
 SQL
 

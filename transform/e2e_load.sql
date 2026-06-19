@@ -20,25 +20,25 @@ INSERT INTO mid_map VALUES (1001,1),(1003,1),(1002,2),(1004,2),(1101,1),(1102,2)
 INSERT INTO payment
 SELECT txn_id, order_no, brand, amount, type, orig_txn_id, epoch_ms(event_time)
 FROM (SELECT *, row_number() OVER (PARTITION BY txn_id ORDER BY _seq DESC) rn
-      FROM read_json_auto('/work/data/landing/payment.ndjson'))
+      FROM read_json_auto('/work/data/landing/payment.p*.ndjson'))
 WHERE rn=1 AND _op<>'d';
 
 INSERT INTO payment_method
 SELECT pm_id, txn_id, order_no, method, payments_mid, amount, type, epoch_ms(event_time)
 FROM (SELECT *, row_number() OVER (PARTITION BY pm_id ORDER BY _seq DESC) rn
-      FROM read_json_auto('/work/data/landing/payment_method.ndjson'))
+      FROM read_json_auto('/work/data/landing/payment_method.p*.ndjson'))
 WHERE rn=1 AND _op<>'d';
 
 INSERT INTO order_item
 SELECT order_no, line_no, partner_id, brand, item_amount
 FROM (SELECT *, row_number() OVER (PARTITION BY order_no, line_no ORDER BY _seq DESC) rn
-      FROM read_json_auto('/work/data/landing/order_item.ndjson'))
+      FROM read_json_auto('/work/data/landing/order_item.p*.ndjson'))
 WHERE rn=1 AND _op<>'d';
 
 INSERT INTO cancel
 SELECT cancel_txn_id, order_no, line_no
 FROM (SELECT *, row_number() OVER (PARTITION BY cancel_txn_id, order_no, line_no ORDER BY _seq DESC) rn
-      FROM read_json_auto('/work/data/landing/cancel.ndjson'))
+      FROM read_json_auto('/work/data/landing/cancel.p*.ndjson'))
 WHERE rn=1 AND _op<>'d';
 
 -- ===== ③ 고아 검증 (물리 FK 없앤 대신 — 파이프라인이 고아 안 만들었나) =====
