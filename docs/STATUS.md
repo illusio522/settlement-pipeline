@@ -131,9 +131,9 @@
   - ⚠️ 주의: 오프셋 리셋(`--reset-offsets`)은 **컨슈머 정지 상태**에서만 됨(활성 시 거부). 그래서 앱 켠 채 되감기는 무효.
   - ⚠️ 측정 교훈: 컨슈머 처리시간은 LAG/오프셋 기반이 불안정(조기종료·exporter 갱신지연) → **랜딩 파일 줄 수 plateau(flush 포함)**로 측정해야 정직. → **단일 vs 병렬 공정 비교 완료(2026-06-19)**: 위 4-A(병렬화) 공정 재측정 참조. ~1.9배(70배 폐기).
 - **Phase 5-1 order_item 쓰기 샤딩 ✅ 완료(2026-06-19, feat/phase5-sharding)**: `LandingWriter`가 `<table>.p<partition>.ndjson`로 파티션별 분리(한 파티션=한 스레드=전용파일=경합0), 읽기측 전부 `<table>.p*.ndjson` 글롭(e2e_load·inc_run·dbt staging·build-iceberg·landing-to-minio).
-  - ★ **가설 반증(정직)**: "order_item 단일락=병목" 가설로 샤딩했으나, 락 제거해도 천장 안 내려감(CoopSticky8 3.07→2.96s, 노이즈). → 단일락 진짜 병목 아님. 진짜 병목 유력후보=단일 브로커 fetch. 상세 `BENCHMARK.md` Phase5.
+  - ★ **가설 반증(정직)**: "order_item 단일락=병목" 가설로 샤딩했으나, 락 제거해도 천장 안 내려감(CoopSticky8 3.07→2.96s, 노이즈). → 단일락 진짜 병목 아님. **진짜 병목은 미확인(측정 안 함 → 단정 금지)**. 상세 `BENCHMARK.md` Phase5.
   - ★ 정합성 유지: E2E 5종 체크섬 정답지 비트동일(16샤드 글롭+`_seq` dedup → 무손실). 교훈: 가설은 측정으로 검증.
-  - 다음: 진짜 병목 국소화(컨슈머 읽기만 vs 적재까지 분리 측정).
+  - 다음: 진짜 병목 국소화 측정(①데이터 10배 ②읽기만vs적재 ③스레드별 처리량) — 측정 전엔 병목 단정 안 함.
 - 4-B 분산(Spark) ⬜ ← 다음 (DuckDB→Spark, MinIO·Iceberg 유지)
 
 ## 남은 일 (우선순위)
