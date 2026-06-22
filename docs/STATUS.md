@@ -134,6 +134,11 @@
   - ★ **가설 반증(정직)**: "order_item 단일락=병목" 가설로 샤딩했으나, 락 제거해도 천장 안 내려감(CoopSticky8 3.07→2.96s, 노이즈). → 단일락 진짜 병목 아님. **진짜 병목은 미확인(측정 안 함 → 단정 금지)**. 상세 `BENCHMARK.md` Phase5.
   - ★ 정합성 유지: E2E 5종 체크섬 정답지 비트동일(16샤드 글롭+`_seq` dedup → 무손실). 교훈: 가설은 측정으로 검증.
   - 다음: 진짜 병목 국소화 측정(①데이터 10배 ②읽기만vs적재 ③스레드별 처리량) — 측정 전엔 병목 단정 안 함.
+- **App-2 컨슈머 견고화(DLQ·재시도) ✅ 완료(2026-06-22, feat/app2-consumer-hardening)**: 실패 메시지 유실 방지.
+  - `CdcParseException`(non-retryable)=악성 메시지 바로 DLQ / `KafkaConfig` 에러핸들러(FixedBackOff 3회 + `DeadLetterPublishingRecoverer`) / producer(KafkaTemplate) / `settlement.dlq.records` 카운터.
+  - DLT 토픽 = `<topic>.DLT`. ★ 검증으로 버그2개 수정: ①발행 파티션 불일치→유실 → 파티션 -1(프로듀서 결정) ②패턴이 .DLT 재구독→cascade → 패턴 `[^.]+$`로 .DLT 제외.
+  - 검증: 악성 주입→DLT 격리·카운터·컨슈머 생존·정상28파티션 유지·cascade없음 전부 확인. ⚠️ retryable(IO)→재시도→DLQ 경로는 설정만, 라이브 미검증(주입 어려움).
+  - 학습 후보(엔드피처): App-2(완료) → Phase6 Iceberg/Nessie → 7 Spark → 8 Avro/SchemaReg → 9 Airflow → 10 서빙API. 상세 설계 대화 참조.
 - 4-B 분산(Spark) ⬜ ← 다음 (DuckDB→Spark, MinIO·Iceberg 유지)
 
 ## 남은 일 (우선순위)

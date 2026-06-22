@@ -42,7 +42,8 @@ public class CdcParser {
                     : rec.offset();
             return Optional.of(new ChangeEvent(sourceTable(rec.topic()), op, data, seq));
         } catch (Exception e) {
-            throw new RuntimeException(
+            // 메시지 자체가 잘못됨 → 재시도 무의미 → non-retryable(DLQ 직행)
+            throw new CdcParseException(
                     "CDC 파싱 실패 topic=" + rec.topic() + " key=" + rec.key(), e);
         }
     }

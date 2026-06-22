@@ -16,6 +16,10 @@ spring:
         # ★ 배분 전략: 기본 Range는 토픽별 배분이라 8스레드 중 4명만 일함(토픽당 4파티션<8).
         #   CooperativeSticky = 28파티션을 8명에 고루(3~4개씩) + 협력적 리밸런스(옮길 것만 멈춤).
         partition.assignment.strategy: org.apache.kafka.clients.consumer.CooperativeStickyAssignor
+    producer:                                # ★ A2: DLQ 발행용 (실패 메시지를 <topic>-dlt 로)
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all                              # DLQ 유실 방지 (모든 복제본 확인)
 
 server:
   port: 8090                                 # actuator 메트릭 노출 포트 (다른 서비스와 충돌 회피)
@@ -31,7 +35,7 @@ management:
 
 app:
   landing-dir: ../data/landing               # NDJSON 랜딩 경로 (.duckdb 안 건드림)
-  topics-pattern: "(pay|order)\\.public\\..*"  # CDC 토픽 전체 패턴 구독
+  topics-pattern: "(pay|order)\\.public\\.[^.]+$"  # CDC 토픽 구독. [^.]+$ = 한 세그먼트로 끝 → .DLT(점 추가) 제외(자기 DLQ 재소비 방지). $로 find()/matches() 모두 안전
 
 logging:
   level:
