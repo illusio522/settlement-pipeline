@@ -101,6 +101,36 @@ services:
       timeout: 5s
       retries: 10
 
+  # ---------- Nessie (Iceberg REST 카탈로그 = 데이터의 Git) ----------
+  #  진짜 Iceberg append/스냅샷/타임트래블을 관리하는 카탈로그. MinIO(S3)를 warehouse로.
+  #  PyIceberg가 REST(:19120/iceberg)로 붙어 테이블 메타데이터를 원자 커밋.
+  nessie:
+    image: ghcr.io/projectnessie/nessie:0.99.0
+    container_name: sp-nessie
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      # 버전스토어: 학습용 in-memory (재시작 시 카탈로그 초기화 — 데이터파일은 MinIO에 남음)
+      NESSIE_VERSION_STORE_TYPE: IN_MEMORY
+      # warehouse = MinIO 버킷 경로
+      NESSIE_CATALOG_DEFAULT_WAREHOUSE: warehouse
+      NESSIE_CATALOG_WAREHOUSES_WAREHOUSE_LOCATION: s3://lake/warehouse
+      # S3(MinIO) 접속 — non-AWS라 endpoint·path-style 지정
+      NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_REGION: us-east-1
+      NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_ENDPOINT: http://sp-minio:9000
+      NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_PATH_STYLE_ACCESS: "true"
+      NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_ACCESS_KEY_NAME: minio
+      NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_ACCESS_KEY_SECRET: minio12345
+    ports:
+      - "19120:19120"   # Nessie API + Iceberg REST
+    healthcheck:
+      # Iceberg REST config가 200이면 카탈로그가 실제 서빙 중(health 엔드포인트보다 정확)
+      test: ["CMD-SHELL", "curl -sf http://localhost:19120/iceberg/v1/config || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   # ---------- Kafka UI (토픽/메시지 가시화, 선택) ----------
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
