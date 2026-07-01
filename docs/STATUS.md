@@ -139,6 +139,11 @@
   - DLT 토픽 = `<topic>.DLT`. ★ 검증으로 버그2개 수정: ①발행 파티션 불일치→유실 → 파티션 -1(프로듀서 결정) ②패턴이 .DLT 재구독→cascade → 패턴 `[^.]+$`로 .DLT 제외.
   - 검증: 악성 주입→DLT 격리·카운터·컨슈머 생존·정상28파티션 유지·cascade없음 전부 확인. ⚠️ retryable(IO)→재시도→DLQ 경로는 설정만, 라이브 미검증(주입 어려움).
   - 학습 후보(엔드피처): App-2(완료) → Phase6 Iceberg/Nessie → 7 Spark → 8 Avro/SchemaReg → 9 Airflow → 10 서빙API. 상세 설계 대화 참조.
+- **App-3 dbt incremental ✅ 완료(2026-06-30, feat/app3-dbt-incremental)**: 손작성 watermark 증분(3-4)을 dbt 네이티브 incremental로.
+  - staging 4개(stg_payment·payment_method·order_item·cancel) → `materialized=incremental`, `_seq`(LSN) watermark(`_seq > (SELECT MAX(_seq) FROM {{this}})`), `delete+insert`(unique_key), `post_hook="DELETE WHERE _op='d'"`(dbt 네이티브 하드삭제 미지원 보완). `_op`·`_seq` 컬럼 유지. int_*·마트는 table 유지.
+  - `run-dbt.sh`에 `inc` 모드 추가(db 미삭제 → {{this}}=watermark). build/run=전체(초기화), inc=증분.
+  - ★ 검증: V1 첫빌드=정답지 값 비트동일(5테이블,캐스팅정규화)+30테스트 / V2 무변화 재실행=멱등 / V3 1건 UPDATE 주입→watermark로 그 행만 증분반영(건수불변·watermark전진)·주입 정리 복원.
+  - ⚠️ 체크섬 주의: dbt `CREATE TABLE AS` 타입추론(HUGEINT/JSON) vs 손작성 DDL(BIGINT) 차이로 raw hash는 불일치 → **값 비교는 캐스팅 정규화 필요**(데이터는 동일). App-3 회귀 아님.
 - 4-B 분산(Spark) ⬜ ← 다음 (DuckDB→Spark, MinIO·Iceberg 유지)
 
 ## 남은 일 (우선순위)
