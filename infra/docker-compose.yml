@@ -111,17 +111,10 @@ services:
       minio:
         condition: service_healthy
     environment:
-      # 버전스토어: 학습용 in-memory (재시작 시 카탈로그 초기화 — 데이터파일은 MinIO에 남음)
-      NESSIE_VERSION_STORE_TYPE: IN_MEMORY
-      # warehouse = MinIO 버킷 경로
-      NESSIE_CATALOG_DEFAULT_WAREHOUSE: warehouse
-      NESSIE_CATALOG_WAREHOUSES_WAREHOUSE_LOCATION: s3://lake/warehouse
-      # S3(MinIO) 접속 — non-AWS라 endpoint·path-style 지정
-      NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_REGION: us-east-1
-      NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_ENDPOINT: http://sp-minio:9000
-      NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_PATH_STYLE_ACCESS: "true"
-      NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_ACCESS_KEY_NAME: minio
-      NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_ACCESS_KEY_SECRET: minio12345
+      # 설정은 properties 파일로 (환경변수의 . / - 모호성 회피 — S3 중첩 시크릿 정확히 매핑)
+      QUARKUS_CONFIG_LOCATIONS: /deployments/config/application.properties
+    volumes:
+      - ./nessie/application.properties:/deployments/config/application.properties:ro
     ports:
       - "19120:19120"   # Nessie API + Iceberg REST
     healthcheck:
