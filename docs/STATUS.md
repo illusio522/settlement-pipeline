@@ -58,7 +58,7 @@
 
 - `transform/01_schema.sql` `generator/02_seed.sql` `transform/03_settlement.sql` `transform/04_checks.sql` = **v3** (현행)
 - `scripts/run-step1.sh` `q.sh` `duckdb-shell.sh` `infra/duckdb/Dockerfile`
-- 다이어그램: `docs/architecture.html` `system-architecture.html` `aws-architecture.html` (※ v1 기준 — v3 미반영)
+- 다이어그램: `architecture.html`(✅ 2026-07-02 인터랙티브 현행화) · `data-flow.html`(✅ 신규 — 단계별 실데이터 예시) · `system-architecture.html` `aws-architecture.html`(※ 여전히 v1 — 재작성 필요)
 - 문서: `DESIGN.md SCHEMA.md DATA-LAYOUT.md DOMAIN-NOTES.md ROADMAP.md ENVIRONMENT.md` (v3 동기화 완료) · `ERD.md`(소스 Postgres + canonical DuckDB, Mermaid — 2026-06-12) · `KAFKA-CONSUMER.md`(파티션·스레드·리밸런스 트리거/타이밍·배분전략(assignor)·장애복구·dedup — 2026-06-18)
   ※ 주의: SCHEMA.md의 소스 테이블 기술은 DuckDB canonical 기준 — **Postgres 소스의 현실형 구조(수단별 4원장)는 ERD.md·infra/postgres/init.sql이 정본**
 
@@ -144,7 +144,16 @@
   - `run-dbt.sh`에 `inc` 모드 추가(db 미삭제 → {{this}}=watermark). build/run=전체(초기화), inc=증분.
   - ★ 검증: V1 첫빌드=정답지 값 비트동일(5테이블,캐스팅정규화)+30테스트 / V2 무변화 재실행=멱등 / V3 1건 UPDATE 주입→watermark로 그 행만 증분반영(건수불변·watermark전진)·주입 정리 복원.
   - ⚠️ 체크섬 주의: dbt `CREATE TABLE AS` 타입추론(HUGEINT/JSON) vs 손작성 DDL(BIGINT) 차이로 raw hash는 불일치 → **값 비교는 캐스팅 정규화 필요**(데이터는 동일). App-3 회귀 아님.
-- 4-B 분산(Spark) ⬜ ← 다음 (DuckDB→Spark, MinIO·Iceberg 유지)
+- **Phase 6/7 Spark 레이크하우스 🔶 진행중(2026-07-01~02, feat/phase6-spark-lakehouse)**: PyIceberg 건너뛰고 바로 Spark(버릴 코드 방지 — 사용자 결정). Nessie 카탈로그 위에서 Spark로 Iceberg 메달리온.
+  - **6-1 Nessie ✅**: `sp-nessie`(0.99.0, :19120) Iceberg REST 카탈로그, warehouse=s3://lake/warehouse. ★설정은 `infra/nessie/application.properties`(Quarkus env는 ./- 모호성으로 S3 설정 미매핑 — 검증으로 발견), 자격증명=시크릿 URN 패턴(`urn:nessie-secret:quarkus:minio-creds`), healthcheck=/iceberg/v1/config(기본 /q/health는 404).
+  - **7-1 Spark 연결 ✅**: `scripts/spark-sql.sh` — burst(docker run --rm, DuckDB/dbt 패턴), apache/spark:3.5.3 + iceberg-spark-runtime/aws-bundle 1.7.1, ivy 캐시 볼륨. 스모크(`transform/spark_smoke.sql`) 통과. 잡은 문제 3: ①ivy 권한(--user root) ②Nessie env 미매핑→properties ③auth-mode/access-key 키 0.99 스키마 불일치→URN 패턴.
+  - **7-2 메달리온 ✅**: `transform/spark_bronze.sql`(랜딩 샤드→bronze 4테이블, 건수=랜딩 580,069 일치) / `spark_silver.sql`(dedup canonical 4+마스터 3, 고아 0,0) / `spark_gold.sql`(03정산 포팅 — ASOF JOIN→row_number 최신1건, TEMP테이블→TEMP VIEW, ::DOUBLE→CAST, ||→concat).
+  - ★ **정합성**: gold settlement_agg 9,795행/event 511,828행 = DuckDB 정답지와 **건수·값체크섬(캐스팅 정규화) 완전 일치**, recon 0,0. 검증은 Spark export(data/spark_export)를 DuckDB로 읽어 같은 엔진에서 대조.
+  - ★ **append/타임트래블 실증**: appenddemo 2배치(4,936+4,984=9,920) append → 옛 커밋 시점 조회=4,936 성공. **발견: Nessie는 이력을 Iceberg 스냅샷 리스트가 아니라 Nessie 커밋(데이터의 Git)으로 관리**(스냅샷 목록엔 현재 1개만) → 타임트래블은 커밋 해시로 카탈로그 uri 고정(`/iceberg/main@<hash>/`).
+  - HTML 2종: `docs/architecture.html` 전면 재작성(인터랙티브 — 노드 클릭 상세·상태 배지·로드맵, v1→현행), `docs/data-flow.html` 신규(주문 64823이 10단계로 변해가는 실데이터 예시, 스텝 네비).
+  - ★ **풀 E2E ✅ 완료(2026-07-02)**: 전체 초기화(랜딩·토픽 delete-records·DLT 삭제·Nessie 재시작·warehouse 비움) → raw 프로듀스(PG 적재)→CDC 580,069→컨슈머(16샤드 580,069)→Spark bronze(건수 일치)→silver(고아 0,0)→gold(9,795/511,828, recon 0,0)→**정답지와 건수·값체크섬 비트 동일**. 빈 상태에서 전 구간 1회 관통 증명.
+  - 관측 갱신(2026-07-02): Grafana에 DLQ 격리 패널 추가(앱 카운터+브로커 DLT 적재), 유입율 정규식 `.DLT` 제외, 스레드 배정표 합친컬럼(토픽-파티션) 라이브 반영.
+- 4-B 분산(Spark) ✅ ← Phase 6/7로 완료 (위 참조 — Nessie/Iceberg 위 Spark, burst 모드. 진짜 멀티노드 클러스터는 추후 학습 후보)
 
 ## 남은 일 (우선순위)
 

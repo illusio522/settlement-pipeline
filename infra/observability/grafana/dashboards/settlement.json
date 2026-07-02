@@ -51,7 +51,7 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
       "targets": [
-        { "expr": "sum by (topic) (rate(kafka_topic_partition_current_offset{topic=~\"(pay|order)\\\\..*\"}[1m]))", "legendFormat": "{{topic}}" }
+        { "expr": "sum by (topic) (rate(kafka_topic_partition_current_offset{topic=~\"(pay|order)\\\\.public\\\\.[^.]+\"}[1m]))", "legendFormat": "{{topic}}" }
       ]
     },
     {
@@ -153,6 +153,17 @@
           }
         },
         { "id": "sortBy", "options": { "fields": "", "sort": [ { "field": "스레드" }, { "field": "토픽-파티션" } ] } }
+      ]
+    },
+    {
+      "id": 18,
+      "title": "DLQ 격리 (처리 실패 메시지 — 0이 정상)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 54 },
+      "targets": [
+        { "expr": "settlement_dlq_records_total{application=\"settlement-normalize\"}", "legendFormat": "앱 DLQ 발행 누적(재시작 시 리셋)" },
+        { "expr": "sum(kafka_topic_partition_current_offset{topic=~\".*\\\\.DLT\"})", "legendFormat": "DLT 토픽 적재 누적(브로커, 영속)" }
       ]
     }
   ],
