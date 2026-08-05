@@ -75,7 +75,7 @@
   <div class="lane"><div class="lane-label">메시징</div><div class="lane-body">
     <div class="node" style="border-left-color:var(--kafka)" data-k="kafka"><span class="badge b-done">완료</span><div class="nm">Kafka (KRaft)</div><div class="tech">7토픽 × 4파티션 · :29092</div></div>
     <div class="node" style="border-left-color:var(--kafka)" data-k="dlt"><span class="badge b-done">완료</span><div class="nm">DLT (실패 격리)</div><div class="tech">&lt;topic&gt;.DLT</div></div>
-    <div class="node" style="border-left-color:var(--kafka)" data-k="kui"><span class="badge b-done">완료</span><div class="nm">Kafka UI</div><div class="tech">:8080</div></div>
+    <div class="node" style="border-left-color:var(--kafka)" data-k="kui"><span class="badge b-done">완료</span><div class="nm">Kafka UI</div><div class="tech">:8081</div></div>
     <div class="node" style="border-left-color:var(--kafka)" data-k="avro"><span class="badge b-todo">계획 P8</span><div class="nm">Avro + Schema Registry</div><div class="tech">직렬화 정식화</div></div>
   </div></div>
   <div class="arrow">↓ 컨슘 (8스레드 · CooperativeSticky · 28파티션 전원 가동)</div>
@@ -159,7 +159,7 @@ const D = {
   "동작":"악성 메시지(파싱 실패)=재시도 없이 바로 DLT · 일시 오류=1s×3회 재시도 후 DLT",
   "버그 잡음":"검증으로 2개 — ①발행 파티션 불일치→유실(파티션 -1로) ②구독 패턴이 DLT 재구독→cascade(패턴 [^.]+$로)",
   "가시성":"settlement.dlq.records 카운터 → Grafana"}},
- kui:{t:"Kafka UI",r:"토픽·메시지·컨슈머그룹 가시화",d:{"보기":"토픽별 파티션/메시지 내용/LAG/DLT 확인","주소":"localhost:8080"}},
+ kui:{t:"Kafka UI",r:"토픽·메시지·컨슈머그룹 가시화",d:{"보기":"토픽별 파티션/메시지 내용/LAG/DLT 확인","주소":"localhost:8081"}},
  avro:{t:"Avro + Schema Registry (계획 P8)",r:"JSON → 바이너리 직렬화 + 스키마 진화",d:{
   "왜":"메시지 크기·파싱 비용↓, 스키마 변경을 계약으로 관리",
   "함께":"Kafka→Iceberg 직접 싱크(컨슈머 대체) 검토"}},
