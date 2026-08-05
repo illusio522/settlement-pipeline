@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Spark SQL (burst compute, docker run --rm) — Nessie Iceberg REST 카탈로그 + MinIO.
 #   DuckDB/dbt와 같은 패턴: 상시 서비스 아니라 필요할 때 컨테이너 띄워 실행.
-#   S3(MinIO) 자격증명은 Nessie가 vend → Spark엔 catalog uri만.
+#   S3(MinIO) 자격증명은 아래 --conf 로 Spark에 직접 주입(Nessie vend 미사용).
 #   사용: bash scripts/spark-sql.sh <sql파일>   (없으면 스모크)
 set -euo pipefail
 cd "$(dirname "$0")/.."

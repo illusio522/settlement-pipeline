@@ -18,7 +18,7 @@ services:
       POSTGRES_PASSWORD: settle
       POSTGRES_DB: postgres   # 실제 DB는 init.sql에서 paydb(결제)·orderdb(주문) 생성
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - pg-data:/var/lib/postgresql/data
@@ -33,7 +33,7 @@ services:
     image: apache/kafka:3.8.0
     container_name: sp-kafka
     ports:
-      - "29092:29092"   # 호스트(자바 앱)에서 접속용
+      - "127.0.0.1:29092:29092"   # 호스트(자바 앱)에서 접속용
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -65,7 +65,7 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "8083:8083"
+      - "127.0.0.1:8083:8083"
     environment:
       BOOTSTRAP_SERVERS: kafka:9092
       GROUP_ID: sp-connect
@@ -91,8 +91,8 @@ services:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: minio12345
     ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # 콘솔 UI
+      - "127.0.0.1:9000:9000"   # S3 API
+      - "127.0.0.1:9001:9001"   # 콘솔 UI
     volumes:
       - minio-data:/data
     healthcheck:
@@ -116,7 +116,7 @@ services:
     volumes:
       - ./nessie/application.properties:/deployments/config/application.properties:ro
     ports:
-      - "19120:19120"   # Nessie API + Iceberg REST
+      - "127.0.0.1:19120:19120"   # Nessie API + Iceberg REST
     healthcheck:
       # Iceberg REST config가 200이면 카탈로그가 실제 서빙 중(health 엔드포인트보다 정확)
       test: ["CMD-SHELL", "curl -sf http://localhost:19120/iceberg/v1/config || exit 1"]
@@ -132,7 +132,7 @@ services:
       kafka:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8081:8080"   # 호스트 8080은 별도 nginx가 점유 → 8081로 회피
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
@@ -149,7 +149,7 @@ services:
       kafka:
         condition: service_healthy
     ports:
-      - "9308:9308"   # /metrics (컨슈머 LAG·오프셋·메시지율)
+      - "127.0.0.1:9308:9308"   # /metrics (컨슈머 LAG·오프셋·메시지율)
 
   # ---------- 관측: Prometheus (메트릭 수집·시계열 저장) ----------
   prometheus:
@@ -158,7 +158,7 @@ services:
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     depends_on:
       - kafka-exporter
 
@@ -175,7 +175,7 @@ services:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       - prometheus
 
