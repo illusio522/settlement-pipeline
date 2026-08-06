@@ -49,6 +49,13 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # ★ 자동생성 토픽의 파티션 수. 기본값 1이면 4-A 병렬화(8스레드)·5 샤딩이 무력화됨.
+      KAFKA_NUM_PARTITIONS: 4
+      # ★ 미지정 시 Kafka 기본값 /tmp/kafka-logs(컨테이너 쓰기 레이어) → 재생성마다 토픽 전멸.
+      #   볼륨 경로로 옮겨 CDC 토픽·_connect_configs·__consumer_offsets 를 영속화.
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - kafka-data:/var/lib/kafka/data
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1 || exit 1"]
       interval: 10s
@@ -185,3 +192,4 @@ services:
 volumes:
   pg-data:
   minio-data:
+  kafka-data:
