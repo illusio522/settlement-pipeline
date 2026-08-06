@@ -91,7 +91,7 @@
 
 ## 3단계 진행 상황 (레이크 + 증분 멱등)
 
-- **3-1 MinIO 레이크 ✅ 완료(2026-06-17)**: `sp-minio` 기동, 버킷 `lake`. DuckDB httpfs로 s3:// 접근(endpoint=sp-minio:9000, path-style, ssl off, minio/minio12345).
+- **3-1 MinIO 레이크 ✅ 완료(2026-06-17)**: `sp-minio` 기동, 버킷 `lake`. DuckDB httpfs로 s3:// 접근(endpoint=sp-minio:9000, path-style, ssl off, 자격증명은 infra/.env).
   - `scripts/landing-to-minio.sh`: 로컬 랜딩 NDJSON → MinIO Parquet(`s3://lake/landing/<table>.parquet`, _op·_seq 보존).
   - `transform/e2e_load_lake.sql` + `scripts/run-e2e-lake.sh`: MinIO Parquet 읽어 dedup→canonical→정산 → `data/e2e_lake.duckdb`. DuckDB 컨테이너 `--network settlement-pipeline_default`로 sp-minio 접근.
   - ★ 검증: 레이크 기준 5종 체크섬 전부 1단계 동일. + 삭제 전파 실증(데모 900001이 DELETE 이벤트→랜딩 d→dedup 떨굼).
