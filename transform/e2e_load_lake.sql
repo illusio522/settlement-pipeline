@@ -2,10 +2,7 @@
 --   e2e_load.sql 의 레이크 버전 — 로컬 NDJSON 대신 s3:// Parquet 읽기.
 -- 전제: transform/01_schema.sql 로 테이블 생성 후, 같은 세션에서 실행.
 
--- MinIO(s3) 접속
-INSTALL httpfs; LOAD httpfs;
-SET s3_endpoint='sp-minio:9000'; SET s3_access_key_id='minio';
-SET s3_secret_access_key='minio12345'; SET s3_use_ssl=false; SET s3_url_style='path';
+-- MinIO(s3) 접속은 러너(scripts/run-e2e-lake.sh)가 infra/.env 값으로 앞에 붙여 넣는다.
 
 -- ① 마스터 (스냅샷, 1단계와 동일)
 INSERT INTO partner

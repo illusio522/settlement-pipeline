@@ -5,6 +5,8 @@
 #   사용: bash scripts/spark-sql.sh <sql파일>   (없으면 스모크)
 set -euo pipefail
 cd "$(dirname "$0")/.."
+[ -f infra/.env ] || { echo "infra/.env 없음 — infra/.env.example 를 복사해 만드세요"; exit 1; }
+set -a; . infra/.env; set +a
 NET=settlement-pipeline_default
 SPARK_IMG=apache/spark:3.5.3
 ICEBERG_VER=1.7.1
@@ -25,6 +27,6 @@ docker run --rm -i --network "$NET" --user root \
     --conf spark.sql.defaultCatalog=nessie \
     --conf spark.sql.catalog.nessie.s3.endpoint=http://sp-minio:9000 \
     --conf spark.sql.catalog.nessie.s3.path-style-access=true \
-    --conf spark.sql.catalog.nessie.s3.access-key-id=minio \
-    --conf spark.sql.catalog.nessie.s3.secret-access-key=minio12345 \
+    --conf spark.sql.catalog.nessie.s3.access-key-id="$MINIO_ROOT_USER" \
+    --conf spark.sql.catalog.nessie.s3.secret-access-key="$MINIO_ROOT_PASSWORD" \
     -f "/work/$SQL_FILE"

@@ -180,7 +180,7 @@ const D = {
  minio:{t:"MinIO",r:"S3 호환 오브젝트 스토리지 = 레이크 저장층",d:{
   "역할":"Parquet·Iceberg 데이터/메타 파일의 실제 보관(바이트) — AWS 계정 불필요(S3 프로토콜 구현체)",
   "경로":"s3://lake/landing(Parquet) · s3://lake/warehouse(Iceberg)",
-  "콘솔":"localhost:9001 (minio/minio12345)"}},
+  "콘솔":"localhost:9001 (계정은 infra/.env 의 MINIO_ROOT_USER/PASSWORD)"}},
  nessie:{t:"Nessie — Iceberg REST 카탈로그",r:"테이블 현재상태(스냅샷) 추적·원자 커밋 = '데이터의 Git'",d:{
   "왜 필요":"카탈로그 없으면 포인터 원자교체 주체가 없어 전체교체만 가능(DuckDB COPY 한계) → append/타임트래블은 카탈로그가 전제",
   "설정":"properties 파일(env는 ./- 모호성으로 미매핑 — 검증으로 발견) · 자격증명은 시크릿 URN 패턴",
