@@ -43,4 +43,10 @@ with DAG(
         bash_command=f"cd {REPO} && bash scripts/run-e2e-iceberg.sh ",
     )
 
-    landing_to_minio >> build_iceberg >> settle_and_check
+    # ④ 정산 산출 → 서빙 스토어(servedb) 재적재 (TRUNCATE+COPY 멱등, 건수 자체검증)
+    publish_serving = BashOperator(
+        task_id="publish_serving",
+        bash_command=f"cd {REPO} && bash scripts/publish-serving.sh ",
+    )
+
+    landing_to_minio >> build_iceberg >> settle_and_check >> publish_serving

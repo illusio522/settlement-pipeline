@@ -23,7 +23,7 @@
 
 1. `docs/data-flow.html` 레이크 단계 분리 WIP — 렌더 확인 후 커밋만 남음
 2. 다이어그램 2종(`system-architecture.html`·`aws-architecture.html`) — v1 상태, 재작성 필요
-3. 학습 후보(엔드피처): ~~Phase 8 Avro/SchemaReg~~ ✅ → ~~9 Airflow~~ ✅(2026-09-01) → 10 서빙 API
+3. ~~학습 후보(엔드피처): Phase 8 Avro/SchemaReg → 9 Airflow → 10 서빙 API~~ **전부 완료(2026-09-01)** — 로드맵 완주
 4. 미결 소항목: Phase 5 병목 국소화 측정, DLQ retryable 경로 라이브 검증, dbt settlement_event incremental화
 
 ### 멱등성 vs 재현성 (이번에 정리)
@@ -172,6 +172,11 @@
   - DAG `settlement_close`: landing_to_minio → build_iceberg → settle_and_check (재시도 1회, @daily 정의·생성 시 paused).
   - ★ 함정 실측: bash_command가 `.sh`로 끝나면 Jinja 템플릿 파일로 오인(TemplateNotFound) → 끝 공백으로 회피(DAG 주석 기록).
   - 검증: 1차 실패 런에서 재시도 소진→failed·하류 upstream_failed 전파(실패 시나리오 겸증) / 2차 런 3태스크 success(21초), 산출 settlement_agg 9,795행 **체크섬 정답지와 비트 동일**.
+- **Phase 10 서빙 API ✅ 완료(2026-09-01, feat/phase10-serving-api)**: 정산 조회 Spring Boot API — 로드맵 학습 후보 완주.
+  - 구조: 레이크 산출(e2e_iceberg.duckdb) → `publish-serving.sh`(TRUNCATE+COPY 멱등, 건수 자체검증) → **sp-postgres `servedb`**(DDL=infra/postgres/serving.sql) → `serving/` JPA read-only API(:8091 루프백). DAG 4번째 태스크 `publish_serving`으로 오케스트레이션 편입.
+  - 서빙 스토어를 분리한 이유: DuckDB 단일 writer(배치 재작성과 조회 충돌) + 레이크→서빙 적재가 실무 표준 + 확정 설계(서빙=JPA·ID 참조 패턴).
+  - API: `GET /api/v1/settlements/{date}`(파트너 요약, 페이징) · `/{date}/partners/{id}`(수단별 상세, 없으면 404). 전 엔드포인트 X-API-Key(env `SERVING_API_KEY`, 상수시간 비교), 입력 검증(ISO 날짜·@Positive), 오류 응답에 내부 정보 미노출.
+  - 검증: 키 없음/오류=401 · 파트너1 CARD 157,817,622/3,945,482/153,872,140 = **04_checks 출력과 정확히 일치** · 테스트 8/0/0(given/when/then, 합성 픽스처) · gradle.lockfile 적용.
 - **운영 전환 문서 ✅ (2026-09-01)**: `docs/PRODUCTION-CHECKLIST.md` — 로컬 타협 전수(통신·인증·시크릿·가용성·공급망·스키마 거버넌스·관측·도메인) → 운영 요구 + 착수 우선순위.
 
 ## 남은 일 (우선순위)
