@@ -2,19 +2,31 @@ package com.settlement.normalize;
 
 import com.settlement.normalize.cdc.CdcParseException;
 import com.settlement.normalize.metrics.AssignmentMetrics;
+import io.apicurio.registry.serde.SerdeConfig;
+import io.apicurio.registry.serde.avro.AvroKafkaSerializer;
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.kafka.ConcurrentKafkaListenerContainerFactoryConfigurer;
+import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.core.DefaultKafkaProducerFactory;
+import org.springframework.kafka.core.KafkaOperations;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.ConsumerRecordRecoverer;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.util.backoff.FixedBackOff;
+
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * @KafkaListener 컨테이너 팩토리 커스텀.
@@ -28,14 +40,29 @@ import org.springframework.util.backoff.FixedBackOff;
 public class KafkaConfig {
 
     @Bean
-    public DefaultErrorHandler kafkaErrorHandler(KafkaTemplate<?, ?> template, MeterRegistry registry) {
+    public DefaultErrorHandler kafkaErrorHandler(KafkaProperties kafkaProps, MeterRegistry registry,
+                                                 @Value("${app.registry-url}") String registryUrl) {
         Counter dlqCounter = Counter.builder("settlement.dlq.records")
                 .description("처리 실패로 DLQ(<topic>-dlt)에 보낸 메시지 수")
                 .register(registry);
 
+        // ★ 8단계: DLT 발행 템플릿을 값 타입별로 분기.
+        //  · 역직렬화 실패(poison) → ErrorHandlingDeserializer가 원본 byte[] 전달 → 그대로 발행
+        //  · 리스너 처리 실패 → 값이 GenericRecord → Avro 재직렬화(DLT 스키마 auto-register)
+        Map<String, Object> base = kafkaProps.buildProducerProperties(null);
+        Map<String, Object> bytesProps = new HashMap<>(base);
+        bytesProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
+        Map<String, Object> avroProps = new HashMap<>(base);
+        avroProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, AvroKafkaSerializer.class);
+        avroProps.put(SerdeConfig.REGISTRY_URL, registryUrl);
+        avroProps.put(SerdeConfig.AUTO_REGISTER_ARTIFACT, "true");
+        Map<Class<?>, KafkaOperations<?, ?>> templates = new LinkedHashMap<>();
+        templates.put(byte[].class, new KafkaTemplate<>(new DefaultKafkaProducerFactory<>(bytesProps)));
+        templates.put(Object.class, new KafkaTemplate<>(new DefaultKafkaProducerFactory<>(avroProps)));
+
         // 재시도 소진/비재시도 시 → DLT(<topic>.DLT) 발행 + 카운트
         //  파티션 = -1 → 프로듀서가 결정(원본 파티션 N이 DLT 파티션 수보다 크면 발행 실패 → 유실 방지)
-        DeadLetterPublishingRecoverer dlt = new DeadLetterPublishingRecoverer(template,
+        DeadLetterPublishingRecoverer dlt = new DeadLetterPublishingRecoverer(templates,
                 (record, ex) -> new TopicPartition(record.topic() + ".DLT", -1));
         ConsumerRecordRecoverer recoverer = (record, ex) -> {
             dlqCounter.increment();

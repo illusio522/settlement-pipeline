@@ -23,6 +23,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")     // 메트릭 엔드포인트
     implementation("org.springframework.boot:spring-boot-starter-web")          // /actuator/prometheus 노출용
     implementation("io.micrometer:micrometer-registry-prometheus")              // Prometheus 형식 메트릭
+    implementation("io.apicurio:apicurio-registry-serdes-avro-serde:2.4.1.Final") // Avro 역직렬화 (Connect 내장 컨버터와 동일 버전)
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.kafka:spring-kafka-test")
 }
