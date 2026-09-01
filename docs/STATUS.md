@@ -11,18 +11,20 @@
 
 ## 지금 어디까지
 
-**1단계(정산 배치 로직 검증, DuckDB) = v3까지 구현·검증 완료 (임시파일에서)**
+**전 단계 구현·검증 완료 — CDC→레이크→정산 파이프라인 풀 E2E 관통 (2026-07-02)**
 
-- 빌드 순서: 1)DuckDB 로직검증 ←현재 / 2)실시간수집(Postgres+Debezium+Kafka) / 3)레이크+dbt증분 / 4)스큐·성능
+- 완료: 1)DuckDB 로직검증 / 2)실시간수집(Postgres+Debezium+Kafka+컨슈머) / 3)레이크+dbt증분 / 4)성능·병렬화 / 5-1)쓰기 샤딩 / App-2 DLQ / App-3 dbt incremental / 6·7)Nessie+Spark 메달리온
+- 품질·보안 점검 완료(2026-08-31~09-01): 포트 루프백·자격증명 `infra/.env` 분리·kafka 볼륨·CdcParser 테스트 13종·실존 브랜드명 제거·LandingWriter close 예외 삼킴 수정(A10)·공급망 고정(A03: 이미지 태그·sha256·gradle.lockfile)
 - 컴퓨트: DuckDB 도커 이미지 `settlement-duckdb:1.5.3`
 - 실행: `bash scripts/run-step1.sh` (01→02→03→04 SQL 파이프 → `data/settlement.duckdb`)
 - 조회: `bash scripts/q.sh "SQL"` / 대화형 `bash scripts/duckdb-shell.sh`
 
 ## ⭐ 즉시 다음 액션
 
-**본 DB에 v3 반영 + 멱등성 + 재현성 = 전부 완료(2026-06-11).** 다음 후보:
-1. 문서 v3 동기화 (SCHEMA/DATA-LAYOUT/다이어그램)
-2. 2단계: 실시간 수집 (Postgres + Debezium + Kafka)
+1. `docs/data-flow.html` 레이크 단계 분리 WIP — 렌더 확인 후 커밋만 남음
+2. 다이어그램 2종(`system-architecture.html`·`aws-architecture.html`) — v1 상태, 재작성 필요
+3. 학습 후보(엔드피처): Phase 8 Avro/Schema Registry → 9 Airflow → 10 서빙 API
+4. 미결 소항목: Phase 5 병목 국소화 측정, DLQ retryable 경로 라이브 검증, dbt settlement_event incremental화
 
 ### 멱등성 vs 재현성 (이번에 정리)
 - **멱등성**(원장 고정, 정산만 재실행 → 동일) = ✅. `03_settlement.sql`만 재실행 시 agg/event 체크섬 비트 동일. ※ run-step1.sh는 원장까지 새로 만드니 멱등성 검증용 아님.
@@ -144,7 +146,7 @@
   - `run-dbt.sh`에 `inc` 모드 추가(db 미삭제 → {{this}}=watermark). build/run=전체(초기화), inc=증분.
   - ★ 검증: V1 첫빌드=정답지 값 비트동일(5테이블,캐스팅정규화)+30테스트 / V2 무변화 재실행=멱등 / V3 1건 UPDATE 주입→watermark로 그 행만 증분반영(건수불변·watermark전진)·주입 정리 복원.
   - ⚠️ 체크섬 주의: dbt `CREATE TABLE AS` 타입추론(HUGEINT/JSON) vs 손작성 DDL(BIGINT) 차이로 raw hash는 불일치 → **값 비교는 캐스팅 정규화 필요**(데이터는 동일). App-3 회귀 아님.
-- **Phase 6/7 Spark 레이크하우스 🔶 진행중(2026-07-01~02, feat/phase6-spark-lakehouse)**: PyIceberg 건너뛰고 바로 Spark(버릴 코드 방지 — 사용자 결정). Nessie 카탈로그 위에서 Spark로 Iceberg 메달리온.
+- **Phase 6/7 Spark 레이크하우스 ✅ 완료(2026-07-01~02, feat/phase6-spark-lakehouse)**: PyIceberg 건너뛰고 바로 Spark(버릴 코드 방지 — 사용자 결정). Nessie 카탈로그 위에서 Spark로 Iceberg 메달리온.
   - **6-1 Nessie ✅**: `sp-nessie`(0.99.0, :19120) Iceberg REST 카탈로그, warehouse=s3://lake/warehouse. ★설정은 `infra/nessie/application.properties`(Quarkus env는 ./- 모호성으로 S3 설정 미매핑 — 검증으로 발견), 자격증명=시크릿 URN 패턴(`urn:nessie-secret:quarkus:minio-creds`), healthcheck=/iceberg/v1/config(기본 /q/health는 404).
   - **7-1 Spark 연결 ✅**: `scripts/spark-sql.sh` — burst(docker run --rm, DuckDB/dbt 패턴), apache/spark:3.5.3 + iceberg-spark-runtime/aws-bundle 1.7.1, ivy 캐시 볼륨. 스모크(`transform/spark_smoke.sql`) 통과. 잡은 문제 3: ①ivy 권한(--user root) ②Nessie env 미매핑→properties ③auth-mode/access-key 키 0.99 스키마 불일치→URN 패턴.
   - **7-2 메달리온 ✅**: `transform/spark_bronze.sql`(랜딩 샤드→bronze 4테이블, 건수=랜딩 580,069 일치) / `spark_silver.sql`(dedup canonical 4+마스터 3, 고아 0,0) / `spark_gold.sql`(03정산 포팅 — ASOF JOIN→row_number 최신1건, TEMP테이블→TEMP VIEW, ::DOUBLE→CAST, ||→concat).
@@ -159,6 +161,6 @@
 
 1. ~~본 DB에 v3 반영 + 멱등 재확인~~ ✅ 완료 + 재현성까지 해결(2026-06-11)
 2. 텍스트 문서 v3 동기화 ✅ 완료(2026-06-11): SCHEMA·DATA-LAYOUT·DOMAIN-NOTES·ROADMAP·DESIGN·ENVIRONMENT
-   - ⬜ 남음: **다이어그램 HTML 3종**(architecture/system-architecture/aws-architecture) — v1 기준, 거의 재작성 필요
+   - architecture.html ✅ 재작성(2026-07-02) · ⬜ 남음: **다이어그램 HTML 2종**(system-architecture/aws-architecture) — v1 기준, 재작성 필요
 3. (옵션) 결제수단별 차등수수료를 partner×method 2차원으로 확장 / 환불 대사(정산 밖이라 보류)
-4. 2단계: 실시간 수집 (Postgres + Debezium + Kafka)
+4. ~~2단계: 실시간 수집~~ ✅ 완료(2026-06-17) — 이후 진행 상황은 위 "2단계~" 섹션들 참조
