@@ -10,7 +10,7 @@ IMG=settlement-duckdb:1.5.3
 NET=settlement-pipeline_default
 
 echo "▶ 기존 iceberg 테이블 정리"
-docker run --rm --network "$NET" -e MINIO_ROOT_USER -e MINIO_ROOT_PASSWORD --entrypoint sh minio/mc -c '
+docker run --rm --network "$NET" -e MINIO_ROOT_USER -e MINIO_ROOT_PASSWORD --entrypoint sh minio/mc:RELEASE.2025-08-13T08-35-41Z -c '
   mc alias set local http://sp-minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1
   mc rm -r --force local/lake/iceberg >/dev/null 2>&1 || true
 '
@@ -52,7 +52,7 @@ SQL
 echo "▶ Iceberg 구조 확인 (metadata/data/snapshot)"
 echo "  [payment 테이블 구조]"
 # minio/mc 이미지에는 awk·sed가 없어 정렬은 호스트에서 처리
-docker run --rm --network "$NET" -e MINIO_ROOT_USER -e MINIO_ROOT_PASSWORD --entrypoint sh minio/mc -c '
+docker run --rm --network "$NET" -e MINIO_ROOT_USER -e MINIO_ROOT_PASSWORD --entrypoint sh minio/mc:RELEASE.2025-08-13T08-35-41Z -c '
   mc alias set local http://sp-minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1
   mc ls -r local/lake/iceberg/payment/
 ' | sed 's/^/    /'
