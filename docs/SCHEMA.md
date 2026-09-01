@@ -8,7 +8,7 @@
 
 코드 컨벤션:
 - `type`: 1=PAY, 2=CANCEL  (※ REFUND는 정산 범위 밖 — 아래 "정산 ≠ 환불" 참고)
-- `brand`: 1=musinsa, 2=29cm
+- `brand`: 1=mall-a, 2=mall-b
 - `status`(대사): 0=MATCHED, 1=UNMATCHED
 - `method`(결제수단): 1=CARD, 2=MONEY(주결제) · 3=POINT, 4=COUPON(보조) — `method_type`로 확장
 - `category`: MAIN(주결제수단, 정산·PG대사 대상) / AUX(보조, 플랫폼 부담)

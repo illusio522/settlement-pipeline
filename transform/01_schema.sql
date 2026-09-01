@@ -1,5 +1,5 @@
 -- 1단계 스키마 v3 — 복합결제 + 결제수단별 정산 명세 + 차등 수수료
--- type 1=PAY 2=CANCEL · brand 1=musinsa 2=29cm · status 0=MATCHED 1=UNMATCHED · 금액 BIGINT(원)
+-- type 1=PAY 2=CANCEL · brand 1=mall-a 2=mall-b · status 0=MATCHED 1=UNMATCHED · 금액 BIGINT(원)
 
 -- 결제수단 마스터 (확대 용이: 행 추가)
 CREATE OR REPLACE TABLE method_type (

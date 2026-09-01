@@ -1,7 +1,7 @@
 # 데이터 레이아웃 (1단계 v3 구현 기준)
 
 > 실제 구현된 테이블·키·인코딩·활용 정리. 소스 SQL: `transform/01_schema.sql`(스키마), `generator/02_seed.sql`(시드), `transform/03_settlement.sql`(배치), `transform/04_checks.sql`(검증).
-> 코드값: `type` 1=PAY 2=CANCEL · `brand` 1=musinsa 2=29cm · `method` 1=CARD 2=MONEY 3=POINT 4=COUPON · `status` 0=MATCHED 1=UNMATCHED · 금액=BIGINT(원)
+> 코드값: `type` 1=PAY 2=CANCEL · `brand` 1=mall-a 2=mall-b · `method` 1=CARD 2=MONEY 3=POINT 4=COUPON · `status` 0=MATCHED 1=UNMATCHED · 금액=BIGINT(원)
 
 ---
 
@@ -117,7 +117,7 @@ recon_card   : (settlement_date, payments_mid) | card_total, pg_total, diff(=0),
 ```sql
 brand || ':' || txn_id || ':' || line_no || ':' || method
 ```
-- 예: `2:5:1:1` = 29cm, 거래5, 라인1, 카드
+- 예: `2:5:1:1` = 몰B, 거래5, 라인1, 카드
 - (라인×결제수단) 1건을 유일 식별 → **멱등 dedup 키** + 추적 키
 - v1 대비 `:method` 추가 (복합결제로 grain이 결제수단까지 내려감)
 
