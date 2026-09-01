@@ -42,8 +42,15 @@
   path.link.flow.dashflow{stroke:var(--obs)}
 
   /* 그룹 박스 (AWS VPC/경계 느낌) */
-  .grp{position:absolute;border:1.6px dashed #b39a4a80;border-radius:14px;background:#bd9a3f0d;transition:.25s}
+  .grp{position:absolute;border:1.6px dashed #b39a4a80;border-radius:14px;background:#bd9a3f0d;transition:.25s;cursor:pointer;z-index:2}
+  .grp:hover{border-color:#d7b85f}
   .grp.on{border-color:var(--lake);background:#bd9a3f1f;box-shadow:0 0 20px -3px var(--lake)}
+  .grp.active{border-style:solid;border-color:var(--acc);background:#bd9a3f1f;box-shadow:0 0 0 2px #8fb2ff44,0 0 22px -2px var(--lake)}
+  .grp .stepno{position:absolute;top:-11px;left:-9px;width:22px;height:22px;border-radius:50%;
+               background:var(--bg);border:1.5px solid var(--line);font-size:10.5px;font-weight:700;
+               color:var(--dim);display:flex;align-items:center;justify-content:center;z-index:6}
+  .grp.active .stepno{border-color:var(--acc);color:var(--acc)}
+  .grp.passed .stepno{background:var(--ok);color:#10241a;border-color:var(--ok)}
   .grp .gtab{position:absolute;top:-12px;left:16px;background:#121828;padding:2px 10px;font-size:10.5px;
              color:#d7b85f;border:1px solid #b39a4a66;border-radius:7px;white-space:nowrap}
   .grp .gin{position:absolute;bottom:9px;left:0;right:0;text-align:center;font-size:10.5px;color:#9a8850}
@@ -145,6 +152,7 @@ const NODES=[
   {id:"dbz",     flow:true, x:204, y:40,  w:152,h:60, c:"--cdc",   ic:"🔁", nm:"Debezium",     tech:"Kafka Connect · CDC"},
   {id:"kafka",   flow:true, x:392, y:40,  w:152,h:60, c:"--kafka", ic:"📨", nm:"Kafka",        tech:"토픽 × 파티션 (스트리밍)"},
   {id:"consumer",flow:true, x:580, y:40,  w:152,h:60, c:"--app",   ic:"⚙️", nm:"싱크 컨슈머",   tech:"Spring Boot · 8스레드"},
+  {id:"lake",    flow:true, box:true,     c:"--lake",  ic:"🧊", nm:"레이크하우스 저장"},
   {id:"spark",   flow:true, x:210, y:380, w:150,h:60, c:"--lake",  ic:"✨", nm:"정산 계산",     tech:"Spark 배치"},
   {id:"payout",  flow:true, x:470, y:380, w:152,h:60, c:"--payout",ic:"💰", nm:"파트너 정산",   tech:"집계 → 지급 명세"},
   // 지원 인프라 (단계 없음 · 클릭하면 상세 카드)
@@ -214,20 +222,36 @@ const S=[
 <span class="c">// payment·수단별 원장·order_item·cancel = 테이블별 토픽으로 분산</span></pre>
 <div class="datalabel">실패 메시지</div><pre><span class="c">// 깨진 메시지 → 재시도 → &lt;topic&gt;.DLT 로 격리 (유실 방지)</span></pre>`},
 
-{node:"consumer", support:["lake","obs"], conns:["kafka_consumer","consumer_lake","nessie_minio","obs_watch"],
- t:"정규화·수집", w:"싱크 컨슈머 (Spring Boot) → Lakehouse 적재",
- h:"원장을 정산용 표준 형태로 바꿔 레이크에 저장",
- d:"컨슈머 8스레드가 파티션을 나눠 병렬 소비. 봉투를 벗겨 <b>정산에 필요한 컬럼만</b> 남기고, card/money/point/coupon <b>4원장을 단일 payment_method</b>(method 코드 1~4)로 통합해 <b>레이크(MinIO/Iceberg)에 저장</b>합니다. 중복·삭제는 저장 시점에 지우지 않고, <b>읽는 쪽이 _seq(LSN)로 정리</b> — 재처리·병렬·장애에도 결과가 같은 <b>멱등</b>의 근원.",
+{node:"consumer", support:["obs"], conns:["kafka_consumer","obs_watch"],
+ t:"정규화 (변환)", w:"싱크 컨슈머 (Spring Boot · 8스레드)",
+ h:"원장을 정산용 표준 형태(canonical)로 변환",
+ d:"8스레드가 파티션을 나눠 병렬 소비. 봉투를 벗겨 <b>정산에 필요한 컬럼만</b> 남기고, card/money/point/coupon <b>4원장을 단일 payment_method</b>(method 1~4)로 통합합니다. 각 레코드에 <b>_op</b>(c/u/d)와 <b>_seq = source.lsn</b>(DB 전역 단조)을 붙여 두는데 — 이게 다음 단계 <b>멱등</b>의 열쇠입니다.",
  x:`<div class="datalabel">변환: payment_card 이벤트 → canonical payment_method</div><pre><span class="c">// in (pay.public.payment_card 토픽에서)</span>
 { after: { pm_id:90001, txn_id:100064823, payments_mid:1001, amount:70000, ... } }
 
-<span class="c">// out — canonical (method=1 로 통합 표기)</span>
-{ table:<span class="s">"payment_method"</span>, op:<span class="s">"c"</span>, seq:<span class="hl">171139480</span>,
+<span class="c">// out — canonical (method=1 로 통합 표기, _op·_seq 부착)</span>
+{ <span class="k">_op</span>:<span class="s">"c"</span>, <span class="k">_seq</span>:<span class="hl">171139480</span>, table:<span class="s">"payment_method"</span>,
   data: { pm_id:<span class="n">90001</span>, txn_id:<span class="n">100064823</span>, order_no:<span class="n">64823</span>,
           <span class="hl">method:1</span>, payments_mid:<span class="n">1001</span>, amount:<span class="n">70000</span>, type:<span class="n">1</span> } }
 
-<span class="c">// point 원장 → method:3, mid=null (보조수단)
-// 저장: 테이블별 파일에 append → 읽을 때 key별 max(_seq) & _op≠'d' 로 dedup</span></pre>`},
+<span class="c">// point 원장 → method:3, mid=null (보조수단)</span></pre>`},
+
+{node:"lake", support:["lake"], conns:["consumer_lake","nessie_minio"],
+ t:"레이크하우스 저장 (멱등)", w:"MinIO(S3)에 저장 · Nessie 카탈로그 커밋",
+ h:"append로만 저장하고, 읽을 때 최신본만 골라 멱등을 보장",
+ d:"canonical 레코드를 <b>MinIO(S3)에 파일로 append</b>하고 <b>Nessie가 커밋</b>으로 버전을 확정합니다. 핵심: 저장 시점엔 중복·수정·삭제를 <b>덮어쓰지 않고 계속 쌓기만</b> 합니다(무상태·락 없음). 정리는 <b>읽는 쪽</b>이 담당 — key별 <b>_seq(LSN) 최댓값 1건 & _op≠'d'</b>. 그래서 이벤트가 <b>중복되거나·순서가 뒤섞이거나·재처리돼도 결과가 항상 같습니다 → 순서무관 멱등</b>.",
+ x:`<div class="datalabel">저장 (append-only) — 같은 키가 여러 번 도착해도 그냥 쌓음</div><table>
+<tr><th>_op</th><th>_seq (LSN)</th><th>order_no / line_no</th><th>item_amount</th><th>비고</th></tr>
+<tr><td>c</td><td>171139502</td><td>64823 / 1</td><td>50,000</td><td>최초</td></tr>
+<tr><td>c</td><td>171139502</td><td>64823 / 1</td><td>50,000</td><td class="hl2">재처리 중복</td></tr>
+<tr><td>c</td><td>171140880</td><td>64823 / 1</td><td>50,000</td><td class="hl2">장애 복구로 또</td></tr></table>
+<div class="datalabel">읽기 시점 dedup — 최신 1건만</div><pre>ROW_NUMBER() OVER (PARTITION BY order_no, line_no
+                   ORDER BY <span class="hl">_seq DESC</span>) = 1   AND   _op <> 'd'
+
+→ 64823 / 1  =  <span class="hl">50,000</span>  (한 건)   <span class="c">// 중복·순서와 무관하게 동일 결과</span></pre>
+<div class="datalabel">삭제도 '데이터' — 마지막이 _op='d' 면 그 키는 빠짐</div><pre><span class="c">// 취소/삭제 이벤트(op=d)가 최신(_seq 최대)이면 dedup 결과에서 제외 → 삭제 전파
+//   실증: 데모 주문 900001 DELETE → 랜딩에 d 기록 → 읽기 결과에서 사라짐</span></pre>
+<div class="note"><b>왜 이렇게?</b> 저장을 무상태 append로 두면 컨슈머끼리 조율할 필요가 없어 <b>병렬·재시작·장애에 안전</b>. 정확성(중복 제거·삭제 반영)은 읽기 한 번으로 해결 = <b>멱등</b>. LSN(_seq)이 전역 단조라, 여러 토픽에서 온 이벤트도 최신 판별이 흔들리지 않습니다.</div>`},
 
 {node:"spark", support:["lake"], conns:["lake_spark","nessie_minio"],
  t:"정산 계산", w:"Spark 배치 (Lakehouse 위에서)",
@@ -274,6 +298,15 @@ LINKS.forEach(l=>{
 // 노드 그리기
 let flowN=0;
 NODES.forEach(n=>{
+  // 레이크하우스는 그룹박스 자체를 단계 노드로 사용 (새 타일 안 만듦)
+  if(n.box){
+    flowN++; n._step=flowN-1;
+    nodeEls[n.id]=lakebox;
+    const idx=S.findIndex(s=>s.node===n.id);
+    lakebox.onclick=()=>{ pause(); go(idx); };
+    lakebox.insertAdjacentHTML('afterbegin', `<div class="stepno">${flowN}</div>`);
+    return;
+  }
   const el=document.createElement('div');
   el.className='pnode'+(n.flow?'':' sup');
   el.dataset.id=n.id;
