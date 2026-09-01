@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: settlement-serving
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:5432/servedb
+    username: ${POSTGRES_USER}               # infra/.env 값 주입 (하드코딩 금지)
+    password: ${POSTGRES_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: none                         # 스키마는 infra/postgres/serving.sql 이 정본
+    open-in-view: false
+
+server:
+  port: 8091                                 # 8090 = normalize actuator 회피
+
+app:
+  api-key: ${SERVING_API_KEY}                # 전 엔드포인트 X-API-Key 인증
