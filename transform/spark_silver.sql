@@ -15,7 +15,7 @@ DROP TABLE IF EXISTS nessie.silver.mid_map;
 -- ===== 마스터 (1단계 02_seed와 동일 값) =====
 CREATE TABLE nessie.silver.partner USING iceberg AS
 SELECT g AS partner_id,
-       CASE WHEN g = 1 THEN 'musinsa-main' ELSE concat('partner-', CAST(g AS STRING)) END AS name,
+       CASE WHEN g = 1 THEN 'mall-a-main' ELSE concat('partner-', CAST(g AS STRING)) END AS name,
        CASE WHEN g <= 50 THEN 1 ELSE 2 END AS brand
 FROM (SELECT explode(sequence(1, 100)) AS g);
 

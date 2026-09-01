@@ -27,7 +27,7 @@ erDiagram
     payment {
         bigint      txn_id      PK  "거래 ID"
         bigint      order_no        "주문번호(교차 도메인 키)"
-        smallint    brand           "1=musinsa 2=29cm"
+        smallint    brand           "1=mall-a 2=mall-b"
         bigint      amount          "결제 총액(원)"
         char3       currency        "KRW"
         smallint    type            "1=PAY 2=CANCEL"

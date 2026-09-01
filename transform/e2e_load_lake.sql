@@ -6,7 +6,7 @@
 
 -- ① 마스터 (스냅샷, 1단계와 동일)
 INSERT INTO partner
-SELECT g, CASE WHEN g=1 THEN 'musinsa-main' ELSE 'partner-'||g END, CASE WHEN g<=50 THEN 1 ELSE 2 END
+SELECT g, CASE WHEN g=1 THEN 'mall-a-main' ELSE 'partner-'||g END, CASE WHEN g<=50 THEN 1 ELSE 2 END
 FROM generate_series(1,100) AS s(g);
 INSERT INTO method_fee VALUES
   (1,0.0250,DATE '2020-01-01'),(2,0.0150,DATE '2020-01-01'),

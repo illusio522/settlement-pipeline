@@ -34,7 +34,7 @@
 1. **스키마** `transform/01_schema.sql` — 마스터/설정(method_type·method_fee·partner·mid_map)·소스(payment·payment_method·order_item·cancel)·파생(settlement_event·settlement_agg·recon_result·recon_card·pg_settlement_file)  ✅
 2. **시드 데이터** `generator/02_seed.sql`
    - 주문 10만건, 라인 1~3개
-   - **스큐 주입**: musinsa 주문의 70% 라인 → partner_id=1
+   - **스큐 주입**: mall-a 주문의 70% 라인 → partner_id=1
    - **복합결제**: payment(헤더) + payment_method(카드+머니 동시/단독, 포인트·쿠폰 보조)
    - PAY 전건 + CANCEL 5% (**전체+부분취소**, cancel 라인 명세)
    - `method_fee` **버전**: 카드 2026-06-01부터 0.025→0.023 (결제수단별 as-of 검증)
