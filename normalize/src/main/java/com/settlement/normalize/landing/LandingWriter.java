@@ -100,9 +100,24 @@ public class LandingWriter {
 
     @PreDestroy
     public void close() {
-        holders.forEach((t, h) -> {
-            synchronized (h) { try { h.writer.close(); } catch (IOException ignore) { } }
-        });
-        log.info("landing writers closed ({}개)", holders.size());
+        // close()는 내부에서 flush 수행 → 실패 = 미flush 버퍼(샤드당 최대 FLUSH_EVERY건) 유실 가능.
+        // 삼키면 로그가 정상 종료로 위장하므로 반드시 error로 남긴다.
+        int failed = 0;
+        for (Map.Entry<String, Holder> e : holders.entrySet()) {
+            Holder h = e.getValue();
+            synchronized (h) {
+                try {
+                    h.writer.close();
+                } catch (IOException ex) {
+                    failed++;
+                    log.error("landing close 실패 — 미flush 버퍼 유실 가능 shard={}", e.getKey(), ex);
+                }
+            }
+        }
+        if (failed > 0) {
+            log.error("landing writers closed ({}개 중 {}개 실패)", holders.size(), failed);
+        } else {
+            log.info("landing writers closed ({}개)", holders.size());
+        }
     }
 }
