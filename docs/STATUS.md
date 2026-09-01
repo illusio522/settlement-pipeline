@@ -23,7 +23,7 @@
 
 1. `docs/data-flow.html` 레이크 단계 분리 WIP — 렌더 확인 후 커밋만 남음
 2. 다이어그램 2종(`system-architecture.html`·`aws-architecture.html`) — v1 상태, 재작성 필요
-3. 학습 후보(엔드피처): Phase 8 Avro/Schema Registry → 9 Airflow → 10 서빙 API
+3. 학습 후보(엔드피처): ~~Phase 8 Avro/Schema Registry~~ ✅(2026-09-01) → 9 Airflow → 10 서빙 API
 4. 미결 소항목: Phase 5 병목 국소화 측정, DLQ retryable 경로 라이브 검증, dbt settlement_event incremental화
 
 ### 멱등성 vs 재현성 (이번에 정리)
@@ -156,6 +156,16 @@
   - ★ **풀 E2E ✅ 완료(2026-07-02)**: 전체 초기화(랜딩·토픽 delete-records·DLT 삭제·Nessie 재시작·warehouse 비움) → raw 프로듀스(PG 적재)→CDC 580,069→컨슈머(16샤드 580,069)→Spark bronze(건수 일치)→silver(고아 0,0)→gold(9,795/511,828, recon 0,0)→**정답지와 건수·값체크섬 비트 동일**. 빈 상태에서 전 구간 1회 관통 증명.
   - 관측 갱신(2026-07-02): Grafana에 DLQ 격리 패널 추가(앱 카운터+브로커 DLT 적재), 유입율 정규식 `.DLT` 제외, 스레드 배정표 합친컬럼(토픽-파티션) 라이브 반영.
 - 4-B 분산(Spark) ✅ ← Phase 6/7로 완료 (위 참조 — Nessie/Iceberg 위 Spark, burst 모드. 진짜 멀티노드 클러스터는 추후 학습 후보)
+- **Phase 8 Avro + Schema Registry ✅ 완료(2026-09-01, feat/phase8-avro-schema-registry)**: CDC 메시지를 스키마리스 JSON → Avro(Apicurio 레지스트리)로 전환, 스키마 진화 검증.
+  - 인프라: `sp-apicurio`(kafkasql 스토리지 — 스키마가 Kafka 토픽에 저장돼 kafka-data 볼륨으로 영속, :8085). 버전 2.4.1.Final = debezium/connect 내장 컨버터와 정확히 일치(실측). Connect에 `ENABLE_APICURIO_CONVERTERS=true` 필요(jar는 내장, 활성화 env).
+  - 커넥터: value만 AvroConverter(auto-register), key는 JSON 유지(컨슈머 키 경로 무변경). ★ 같은 이름 재등록 시 `_connect_offsets`에 옛 오프셋이 남아 스냅샷 생략됨 → **등록→stop→`DELETE /connectors/{name}/offsets`→resume**으로 강제 재스냅샷(Kafka 3.7 API). 재스냅샷 580,069 = 기준선 정확 일치.
+  - 컨슈머: `AvroKafkaDeserializer`를 `ErrorHandlingDeserializer`로 래핑(poison→poll 무한루프 대신 DLQ). CdcParser JSON→GenericRecord 전환(Utf8→String 등 표준화, 스키마에 없는 필드 null 방어). DLT 발행은 값 타입별 템플릿 2종(역직렬화 실패=원본 byte[]·리스너 실패=Avro 재직렬화). 테스트 13종 Avro 픽스처로 재작성, 전부 통과.
+  - ★ DLQ poison 라이브 검증: 쓰레기 바이트 주입 → 재시도 루프 없이 `<topic>.DLT`에 원본 byte[] 그대로 격리, 카운터+1, 컨슈머 생존. 이전 세션 미커밋 오프셋 재소비(동일 _seq 중복 d)는 읽기 dedup이 자연 흡수 — at-least-once 설계 실증. (리스너 실패→Avro 재직렬화 DLT 경로는 설정만 검증 — App-2 때와 동일 수준)
+  - ★ 정합성: Avro 랜딩 580,069줄 → 재구성 settlement_agg 9,795행 **체크섬 = DuckDB 정답지와 비트 동일** (JSON→Avro 전환 무손실 증명).
+  - ★ 진화 실증①(호환): cancel `ADD COLUMN memo` → 새 이벤트에서 스키마 v2 자동 등록, **코드 무수정 컨슈머가 무중단 처리**(landed+1, DLQ 0), projection이 memo 자연 제외. 삭제 전파(c→d, LSN 단조)도 확인.
+  - ★ 진화 실증②(거부): BACKWARD 규칙 하에 필드 추가(옵셔널)=200 통과 / `reason_code` int→string 타입 변경=**409 RuleViolationException 거부**.
+  - ⚠️ 한계(실측): Apicurio 2.4.1은 **참조(Source) 포함 아티팩트에 호환성 규칙을 걸면 기존 버전 파싱 실패(422)** → 실제 CDC 아티팩트엔 규칙 미적용 상태(진화는 auto-register로 무규칙 등록). 규칙 실사용은 레지스트리 업그레이드 또는 Source 인라인 전환 필요.
+  - ⚠️ 랜딩 백업: `data/landing.pre-avro/`(JSON 시절) 보관 중 — 검증 끝났으니 삭제 가능.
 
 ## 남은 일 (우선순위)
 

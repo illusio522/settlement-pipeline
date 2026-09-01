@@ -14,10 +14,12 @@
     "snapshot.mode": "initial",
     "table.include.list": "public.payment,public.payment_card,public.payment_money,public.payment_point,public.payment_coupon",
     "key.converter": "org.apache.kafka.connect.json.JsonConverter",
-    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter": "io.apicurio.registry.utils.converter.AvroConverter",
     "key.converter.schemas.enable": "false",
-    "value.converter.schemas.enable": "false",
     "decimal.handling.mode": "double",
-    "time.precision.mode": "connect"
+    "time.precision.mode": "connect",
+    "value.converter.apicurio.registry.url": "http://apicurio:8080/apis/registry/v2",
+    "value.converter.apicurio.registry.auto-register": "true",
+    "value.converter.apicurio.registry.find-latest": "true"
   }
 }

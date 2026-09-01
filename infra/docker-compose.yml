@@ -76,6 +76,7 @@ services:
     environment:
       BOOTSTRAP_SERVERS: kafka:9092
       GROUP_ID: sp-connect
+      ENABLE_APICURIO_CONVERTERS: "true"   # 내장 Apicurio Avro 컨버터를 플러그인 경로에 활성화
       CONFIG_STORAGE_TOPIC: _connect_configs
       OFFSET_STORAGE_TOPIC: _connect_offsets
       STATUS_STORAGE_TOPIC: _connect_status
@@ -85,6 +86,25 @@ services:
       CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8083/ >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # ---------- Apicurio Registry (Avro 스키마 레지스트리) ----------
+  #  Debezium 내장 컨버터(2.4.1.Final)와 버전 일치. 스토리지=kafkasql →
+  #  스키마가 Kafka 토픽에 저장돼 kafka-data 볼륨으로 함께 영속화(별도 DB 없음).
+  apicurio:
+    image: apicurio/apicurio-registry-kafkasql:2.4.1.Final
+    container_name: sp-apicurio
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "127.0.0.1:8085:8080"   # REST API + UI (호스트 8080=nginx, 8081=kafka-ui 회피)
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
