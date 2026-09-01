@@ -23,7 +23,7 @@ SQL
 } | docker run --rm -i --network "$NET" -v "$PWD":/work "$IMG" :memory:
 
 echo "▶ MinIO 적재 확인"
-docker run --rm --network "$NET" -e MINIO_ROOT_USER -e MINIO_ROOT_PASSWORD --entrypoint sh minio/mc -c '
+docker run --rm --network "$NET" -e MINIO_ROOT_USER -e MINIO_ROOT_PASSWORD --entrypoint sh minio/mc:RELEASE.2025-08-13T08-35-41Z -c '
   mc alias set local http://sp-minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 &&
   mc ls -r local/lake/landing/
 '

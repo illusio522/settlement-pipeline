@@ -13,6 +13,9 @@ java {
 
 repositories { mavenCentral() }
 
+// 의존성 버전 잠금 (gradle.lockfile) — 갱신은 ./gradlew dependencies --write-locks
+dependencyLocking { lockAllConfigurations() }
+
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter")
     implementation("org.springframework.boot:spring-boot-starter-json")   // Jackson(JSON 파싱)
