@@ -23,7 +23,7 @@
 
 1. `docs/data-flow.html` 레이크 단계 분리 WIP — 렌더 확인 후 커밋만 남음
 2. 다이어그램 2종(`system-architecture.html`·`aws-architecture.html`) — v1 상태, 재작성 필요
-3. 학습 후보(엔드피처): ~~Phase 8 Avro/Schema Registry~~ ✅(2026-09-01) → 9 Airflow → 10 서빙 API
+3. 학습 후보(엔드피처): ~~Phase 8 Avro/SchemaReg~~ ✅ → ~~9 Airflow~~ ✅(2026-09-01) → 10 서빙 API
 4. 미결 소항목: Phase 5 병목 국소화 측정, DLQ retryable 경로 라이브 검증, dbt settlement_event incremental화
 
 ### 멱등성 vs 재현성 (이번에 정리)
@@ -166,6 +166,13 @@
   - ★ 진화 실증②(거부): BACKWARD 규칙 하에 필드 추가(옵셔널)=200 통과 / `reason_code` int→string 타입 변경=**409 RuleViolationException 거부**.
   - ⚠️ 한계(실측): Apicurio 2.4.1은 **참조(Source) 포함 아티팩트에 호환성 규칙을 걸면 기존 버전 파싱 실패(422)** → 실제 CDC 아티팩트엔 규칙 미적용 상태(진화는 auto-register로 무규칙 등록). 규칙 실사용은 레지스트리 업그레이드 또는 Source 인라인 전환 필요.
   - ⚠️ 랜딩 백업: `data/landing.pre-avro/`(JSON 시절) 보관 중 — 검증 끝났으니 삭제 가능.
+- **Phase 9 Airflow 오케스트레이션 ✅ 완료(2026-09-01, feat/phase9-airflow)**: 수동 셸 순서 실행 → DAG.
+  - 인프라: `sp-airflow`(apache/airflow 2.10.5 standalone·LocalExecutor, :8087), 메타DB=sp-postgres `airflowdb`, 이미지에 docker CLI 정적 복사(docker:27.5.1-cli 멀티스테이지).
+  - ★ 핵심 트릭: 저장소를 **호스트와 동일 절대경로**(`REPO_HOST_PATH`, infra/.env)로 마운트 + docker.sock 공유 → 기존 `scripts/*.sh`의 `docker run -v "$PWD":/work` 패턴을 **무수정 재사용**. (root·sock 공유는 로컬 타협 — PRODUCTION-CHECKLIST §5)
+  - DAG `settlement_close`: landing_to_minio → build_iceberg → settle_and_check (재시도 1회, @daily 정의·생성 시 paused).
+  - ★ 함정 실측: bash_command가 `.sh`로 끝나면 Jinja 템플릿 파일로 오인(TemplateNotFound) → 끝 공백으로 회피(DAG 주석 기록).
+  - 검증: 1차 실패 런에서 재시도 소진→failed·하류 upstream_failed 전파(실패 시나리오 겸증) / 2차 런 3태스크 success(21초), 산출 settlement_agg 9,795행 **체크섬 정답지와 비트 동일**.
+- **운영 전환 문서 ✅ (2026-09-01)**: `docs/PRODUCTION-CHECKLIST.md` — 로컬 타협 전수(통신·인증·시크릿·가용성·공급망·스키마 거버넌스·관측·도메인) → 운영 요구 + 착수 우선순위.
 
 ## 남은 일 (우선순위)
 

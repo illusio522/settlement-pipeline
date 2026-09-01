@@ -209,7 +209,41 @@ services:
     depends_on:
       - prometheus
 
+  # ---------- Airflow (배치 오케스트레이션 — Phase 9) ----------
+  #  standalone(스케줄러+웹서버+LocalExecutor 단일 프로세스), 메타DB는 sp-postgres의 airflowdb.
+  #  ★ 저장소를 호스트와 동일 절대경로로 마운트 + docker.sock 공유
+  #    → 기존 scripts/*.sh 의 `docker run -v "$PWD":/work` 패턴을 무수정 재사용.
+  #  ★ root 실행·docker.sock 공유는 로컬 학습용 타협 — 운영 전환 문서 참조.
+  airflow:
+    build: ./airflow
+    image: settlement-airflow:2.10.5
+    container_name: sp-airflow
+    user: "0:0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: standalone
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_FOLDER: ${REPO_HOST_PATH:?infra/.env 필요}/orchestration/dags
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:?infra/.env 필요}:${POSTGRES_PASSWORD:?infra/.env 필요}@postgres:5432/airflowdb
+      REPO_HOST_PATH: ${REPO_HOST_PATH:?infra/.env 필요}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${REPO_HOST_PATH:?infra/.env 필요}:${REPO_HOST_PATH:?infra/.env 필요}
+      - airflow-data:/opt/airflow
+    ports:
+      - "127.0.0.1:8087:8080"   # 웹 UI (8080 nginx·8081 kafka-ui·8085 apicurio 회피)
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+
 volumes:
   pg-data:
   minio-data:
   kafka-data:
+  airflow-data:
