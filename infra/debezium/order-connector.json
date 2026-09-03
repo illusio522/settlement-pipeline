@@ -4,8 +4,8 @@
     "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
     "database.hostname": "postgres",
     "database.port": "5432",
-    "database.user": "settle",
-    "database.password": "settle",
+    "database.user": "__POSTGRES_USER__",
+    "database.password": "__POSTGRES_PASSWORD__",
     "database.dbname": "orderdb",
     "plugin.name": "pgoutput",
     "publication.name": "dbz_order",
@@ -14,10 +14,12 @@
     "snapshot.mode": "initial",
     "table.include.list": "public.order_item,public.cancel",
     "key.converter": "org.apache.kafka.connect.json.JsonConverter",
-    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter": "io.apicurio.registry.utils.converter.AvroConverter",
     "key.converter.schemas.enable": "false",
-    "value.converter.schemas.enable": "false",
     "decimal.handling.mode": "double",
-    "time.precision.mode": "connect"
+    "time.precision.mode": "connect",
+    "value.converter.apicurio.registry.url": "http://apicurio:8080/apis/registry/v2",
+    "value.converter.apicurio.registry.auto-register": "true",
+    "value.converter.apicurio.registry.find-latest": "true"
   }
 }

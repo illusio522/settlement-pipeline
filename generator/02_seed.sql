@@ -7,7 +7,7 @@ SELECT setseed(0.42);
 
 -- 마스터
 INSERT INTO partner
-SELECT g, CASE WHEN g=1 THEN 'musinsa-main' ELSE 'partner-'||g END, CASE WHEN g<=50 THEN 1 ELSE 2 END
+SELECT g, CASE WHEN g=1 THEN 'mall-a-main' ELSE 'partner-'||g END, CASE WHEN g<=50 THEN 1 ELSE 2 END
 FROM generate_series(1,100) AS s(g);
 
 -- 결제수단별 정산 수수료(차등, as-of): 카드 2.5% 머니 1.5% 포인트/쿠폰 0%, 카드 6/1 인하

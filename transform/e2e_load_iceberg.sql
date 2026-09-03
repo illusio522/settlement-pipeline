@@ -2,14 +2,13 @@
 --   dedup·event_time 변환은 build-iceberg.sh(쓰기 시점)에 이미 적용됨 → 여기선 직접 읽기.
 -- 전제: 01_schema.sql 로 테이블 생성 후 같은 세션 실행.
 
-INSTALL httpfs; LOAD httpfs; INSTALL iceberg; LOAD iceberg;
-SET s3_endpoint='sp-minio:9000'; SET s3_access_key_id='minio';
-SET s3_secret_access_key='minio12345'; SET s3_use_ssl=false; SET s3_url_style='path';
+-- httpfs·S3 접속은 러너(scripts/run-e2e-iceberg.sh)가 infra/.env 값으로 앞에 붙여 넣는다.
+INSTALL iceberg; LOAD iceberg;
 SET unsafe_enable_version_guessing=true;
 
 -- 마스터 (스냅샷)
 INSERT INTO partner
-SELECT g, CASE WHEN g=1 THEN 'musinsa-main' ELSE 'partner-'||g END, CASE WHEN g<=50 THEN 1 ELSE 2 END
+SELECT g, CASE WHEN g=1 THEN 'mall-a-main' ELSE 'partner-'||g END, CASE WHEN g<=50 THEN 1 ELSE 2 END
 FROM generate_series(1,100) AS s(g);
 INSERT INTO method_fee VALUES
   (1,0.0250,DATE '2020-01-01'),(2,0.0150,DATE '2020-01-01'),

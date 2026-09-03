@@ -10,15 +10,18 @@ spring:
       max-poll-records: 2000                 # 한 번에 더 많이 가져와 처리량↑
       auto-offset-reset: earliest            # 처음 붙으면 토픽 맨 앞부터(재처리 가능)
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # ★ 8단계: value = Avro(레지스트리). ErrorHandlingDeserializer로 감싸야
+      #   poison 메시지가 poll 무한루프 대신 에러핸들러(DLQ)로 감.
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
       properties:
+        spring.deserializer.value.delegate.class: io.apicurio.registry.serde.avro.AvroKafkaDeserializer
+        apicurio.registry.url: ${app.registry-url}
         metadata.max.age.ms: 10000           # 새 토픽 자동 발견 주기(패턴 구독용)
         # ★ 배분 전략: 기본 Range는 토픽별 배분이라 8스레드 중 4명만 일함(토픽당 4파티션<8).
         #   CooperativeSticky = 28파티션을 8명에 고루(3~4개씩) + 협력적 리밸런스(옮길 것만 멈춤).
         partition.assignment.strategy: org.apache.kafka.clients.consumer.CooperativeStickyAssignor
-    producer:                                # ★ A2: DLQ 발행용 (실패 메시지를 <topic>-dlt 로)
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    producer:                                # ★ A2: DLQ 발행용 — 직렬화기는 KafkaConfig에서
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer   #  타입별(byte[]/Avro) 템플릿으로 구성
       acks: all                              # DLQ 유실 방지 (모든 복제본 확인)
 
 server:
@@ -34,6 +37,7 @@ management:
       application: settlement-normalize       # 모든 메트릭에 앱 태그
 
 app:
+  registry-url: http://127.0.0.1:8085/apis/registry/v2   # Apicurio (Avro 스키마 레지스트리)
   landing-dir: ../data/landing               # NDJSON 랜딩 경로 (.duckdb 안 건드림)
   topics-pattern: "(pay|order)\\.public\\.[^.]+$"  # CDC 토픽 구독. [^.]+$ = 한 세그먼트로 끝 → .DLT(점 추가) 제외(자기 DLQ 재소비 방지). $로 find()/matches() 모두 안전
 

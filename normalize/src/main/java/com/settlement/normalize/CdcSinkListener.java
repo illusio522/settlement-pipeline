@@ -5,6 +5,7 @@ import com.settlement.normalize.cdc.CdcParser;
 import com.settlement.normalize.landing.LandingWriter;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,9 +15,9 @@ import org.springframework.stereotype.Component;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 싱크 컨슈머: 카프카 CDC → 파싱 → 정규화(canonical) → NDJSON 랜딩 적재.
+ * 싱크 컨슈머: 카프카 CDC(Avro) → 파싱 → 정규화(canonical) → NDJSON 랜딩 적재.
  *  파싱/정규화에서 걸러진 것(톰스톤·구독외)은 자연 스킵(Optional 빈값).
- *  _seq = 카프카 오프셋(파티션 내 단조증가) → 읽기 시점 dedup의 최신 판별 기준.
+ *  _seq = Postgres LSN(DB 전역 단조) → 읽기 시점 dedup의 최신 판별 기준.
  */
 @Component
 public class CdcSinkListener {
@@ -40,7 +41,7 @@ public class CdcSinkListener {
     }
 
     @KafkaListener(topicPattern = "${app.topics-pattern}")
-    public void onMessage(ConsumerRecord<String, String> rec) {
+    public void onMessage(ConsumerRecord<String, GenericRecord> rec) {
         parser.parse(rec)
                 .flatMap(normalizer::normalize)
                 .ifPresent(c -> {

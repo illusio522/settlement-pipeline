@@ -11,18 +11,20 @@
 
 ## 지금 어디까지
 
-**1단계(정산 배치 로직 검증, DuckDB) = v3까지 구현·검증 완료 (임시파일에서)**
+**전 단계 구현·검증 완료 — CDC→레이크→정산 파이프라인 풀 E2E 관통 (2026-07-02)**
 
-- 빌드 순서: 1)DuckDB 로직검증 ←현재 / 2)실시간수집(Postgres+Debezium+Kafka) / 3)레이크+dbt증분 / 4)스큐·성능
+- 완료: 1)DuckDB 로직검증 / 2)실시간수집(Postgres+Debezium+Kafka+컨슈머) / 3)레이크+dbt증분 / 4)성능·병렬화 / 5-1)쓰기 샤딩 / App-2 DLQ / App-3 dbt incremental / 6·7)Nessie+Spark 메달리온
+- 품질·보안 점검 완료(2026-08-31~09-01): 포트 루프백·자격증명 `infra/.env` 분리·kafka 볼륨·CdcParser 테스트 13종·실존 브랜드명 제거·LandingWriter close 예외 삼킴 수정(A10)·공급망 고정(A03: 이미지 태그·sha256·gradle.lockfile)
 - 컴퓨트: DuckDB 도커 이미지 `settlement-duckdb:1.5.3`
 - 실행: `bash scripts/run-step1.sh` (01→02→03→04 SQL 파이프 → `data/settlement.duckdb`)
 - 조회: `bash scripts/q.sh "SQL"` / 대화형 `bash scripts/duckdb-shell.sh`
 
 ## ⭐ 즉시 다음 액션
 
-**본 DB에 v3 반영 + 멱등성 + 재현성 = 전부 완료(2026-06-11).** 다음 후보:
-1. 문서 v3 동기화 (SCHEMA/DATA-LAYOUT/다이어그램)
-2. 2단계: 실시간 수집 (Postgres + Debezium + Kafka)
+1. `docs/data-flow.html` 레이크 단계 분리 WIP — 렌더 확인 후 커밋만 남음
+2. 다이어그램 2종(`system-architecture.html`·`aws-architecture.html`) — v1 상태, 재작성 필요
+3. ~~학습 후보(엔드피처): Phase 8 Avro/SchemaReg → 9 Airflow → 10 서빙 API~~ **전부 완료(2026-09-01)** — 로드맵 완주
+4. 미결 소항목: Phase 5 병목 국소화 측정, DLQ retryable 경로 라이브 검증, dbt settlement_event incremental화
 
 ### 멱등성 vs 재현성 (이번에 정리)
 - **멱등성**(원장 고정, 정산만 재실행 → 동일) = ✅. `03_settlement.sql`만 재실행 시 agg/event 체크섬 비트 동일. ※ run-step1.sh는 원장까지 새로 만드니 멱등성 검증용 아님.
@@ -58,7 +60,7 @@
 
 - `transform/01_schema.sql` `generator/02_seed.sql` `transform/03_settlement.sql` `transform/04_checks.sql` = **v3** (현행)
 - `scripts/run-step1.sh` `q.sh` `duckdb-shell.sh` `infra/duckdb/Dockerfile`
-- 다이어그램: `docs/architecture.html` `system-architecture.html` `aws-architecture.html` (※ v1 기준 — v3 미반영)
+- 다이어그램: `architecture.html`(✅ 2026-07-02 인터랙티브 현행화) · `data-flow.html`(✅ 신규 — 단계별 실데이터 예시) · `system-architecture.html` `aws-architecture.html`(※ 여전히 v1 — 재작성 필요)
 - 문서: `DESIGN.md SCHEMA.md DATA-LAYOUT.md DOMAIN-NOTES.md ROADMAP.md ENVIRONMENT.md` (v3 동기화 완료) · `ERD.md`(소스 Postgres + canonical DuckDB, Mermaid — 2026-06-12) · `KAFKA-CONSUMER.md`(파티션·스레드·리밸런스 트리거/타이밍·배분전략(assignor)·장애복구·dedup — 2026-06-18)
   ※ 주의: SCHEMA.md의 소스 테이블 기술은 DuckDB canonical 기준 — **Postgres 소스의 현실형 구조(수단별 4원장)는 ERD.md·infra/postgres/init.sql이 정본**
 
@@ -91,7 +93,7 @@
 
 ## 3단계 진행 상황 (레이크 + 증분 멱등)
 
-- **3-1 MinIO 레이크 ✅ 완료(2026-06-17)**: `sp-minio` 기동, 버킷 `lake`. DuckDB httpfs로 s3:// 접근(endpoint=sp-minio:9000, path-style, ssl off, minio/minio12345).
+- **3-1 MinIO 레이크 ✅ 완료(2026-06-17)**: `sp-minio` 기동, 버킷 `lake`. DuckDB httpfs로 s3:// 접근(endpoint=sp-minio:9000, path-style, ssl off, 자격증명은 infra/.env).
   - `scripts/landing-to-minio.sh`: 로컬 랜딩 NDJSON → MinIO Parquet(`s3://lake/landing/<table>.parquet`, _op·_seq 보존).
   - `transform/e2e_load_lake.sql` + `scripts/run-e2e-lake.sh`: MinIO Parquet 읽어 dedup→canonical→정산 → `data/e2e_lake.duckdb`. DuckDB 컨테이너 `--network settlement-pipeline_default`로 sp-minio 접근.
   - ★ 검증: 레이크 기준 5종 체크섬 전부 1단계 동일. + 삭제 전파 실증(데모 900001이 DELETE 이벤트→랜딩 d→dedup 떨굼).
@@ -144,12 +146,43 @@
   - `run-dbt.sh`에 `inc` 모드 추가(db 미삭제 → {{this}}=watermark). build/run=전체(초기화), inc=증분.
   - ★ 검증: V1 첫빌드=정답지 값 비트동일(5테이블,캐스팅정규화)+30테스트 / V2 무변화 재실행=멱등 / V3 1건 UPDATE 주입→watermark로 그 행만 증분반영(건수불변·watermark전진)·주입 정리 복원.
   - ⚠️ 체크섬 주의: dbt `CREATE TABLE AS` 타입추론(HUGEINT/JSON) vs 손작성 DDL(BIGINT) 차이로 raw hash는 불일치 → **값 비교는 캐스팅 정규화 필요**(데이터는 동일). App-3 회귀 아님.
-- 4-B 분산(Spark) ⬜ ← 다음 (DuckDB→Spark, MinIO·Iceberg 유지)
+- **Phase 6/7 Spark 레이크하우스 ✅ 완료(2026-07-01~02, feat/phase6-spark-lakehouse)**: PyIceberg 건너뛰고 바로 Spark(버릴 코드 방지 — 사용자 결정). Nessie 카탈로그 위에서 Spark로 Iceberg 메달리온.
+  - **6-1 Nessie ✅**: `sp-nessie`(0.99.0, :19120) Iceberg REST 카탈로그, warehouse=s3://lake/warehouse. ★설정은 `infra/nessie/application.properties`(Quarkus env는 ./- 모호성으로 S3 설정 미매핑 — 검증으로 발견), 자격증명=시크릿 URN 패턴(`urn:nessie-secret:quarkus:minio-creds`), healthcheck=/iceberg/v1/config(기본 /q/health는 404).
+  - **7-1 Spark 연결 ✅**: `scripts/spark-sql.sh` — burst(docker run --rm, DuckDB/dbt 패턴), apache/spark:3.5.3 + iceberg-spark-runtime/aws-bundle 1.7.1, ivy 캐시 볼륨. 스모크(`transform/spark_smoke.sql`) 통과. 잡은 문제 3: ①ivy 권한(--user root) ②Nessie env 미매핑→properties ③auth-mode/access-key 키 0.99 스키마 불일치→URN 패턴.
+  - **7-2 메달리온 ✅**: `transform/spark_bronze.sql`(랜딩 샤드→bronze 4테이블, 건수=랜딩 580,069 일치) / `spark_silver.sql`(dedup canonical 4+마스터 3, 고아 0,0) / `spark_gold.sql`(03정산 포팅 — ASOF JOIN→row_number 최신1건, TEMP테이블→TEMP VIEW, ::DOUBLE→CAST, ||→concat).
+  - ★ **정합성**: gold settlement_agg 9,795행/event 511,828행 = DuckDB 정답지와 **건수·값체크섬(캐스팅 정규화) 완전 일치**, recon 0,0. 검증은 Spark export(data/spark_export)를 DuckDB로 읽어 같은 엔진에서 대조.
+  - ★ **append/타임트래블 실증**: appenddemo 2배치(4,936+4,984=9,920) append → 옛 커밋 시점 조회=4,936 성공. **발견: Nessie는 이력을 Iceberg 스냅샷 리스트가 아니라 Nessie 커밋(데이터의 Git)으로 관리**(스냅샷 목록엔 현재 1개만) → 타임트래블은 커밋 해시로 카탈로그 uri 고정(`/iceberg/main@<hash>/`).
+  - HTML 2종: `docs/architecture.html` 전면 재작성(인터랙티브 — 노드 클릭 상세·상태 배지·로드맵, v1→현행), `docs/data-flow.html` 신규(주문 64823이 10단계로 변해가는 실데이터 예시, 스텝 네비).
+  - ★ **풀 E2E ✅ 완료(2026-07-02)**: 전체 초기화(랜딩·토픽 delete-records·DLT 삭제·Nessie 재시작·warehouse 비움) → raw 프로듀스(PG 적재)→CDC 580,069→컨슈머(16샤드 580,069)→Spark bronze(건수 일치)→silver(고아 0,0)→gold(9,795/511,828, recon 0,0)→**정답지와 건수·값체크섬 비트 동일**. 빈 상태에서 전 구간 1회 관통 증명.
+  - 관측 갱신(2026-07-02): Grafana에 DLQ 격리 패널 추가(앱 카운터+브로커 DLT 적재), 유입율 정규식 `.DLT` 제외, 스레드 배정표 합친컬럼(토픽-파티션) 라이브 반영.
+- 4-B 분산(Spark) ✅ ← Phase 6/7로 완료 (위 참조 — Nessie/Iceberg 위 Spark, burst 모드. 진짜 멀티노드 클러스터는 추후 학습 후보)
+- **Phase 8 Avro + Schema Registry ✅ 완료(2026-09-01, feat/phase8-avro-schema-registry)**: CDC 메시지를 스키마리스 JSON → Avro(Apicurio 레지스트리)로 전환, 스키마 진화 검증.
+  - 인프라: `sp-apicurio`(kafkasql 스토리지 — 스키마가 Kafka 토픽에 저장돼 kafka-data 볼륨으로 영속, :8085). 버전 2.4.1.Final = debezium/connect 내장 컨버터와 정확히 일치(실측). Connect에 `ENABLE_APICURIO_CONVERTERS=true` 필요(jar는 내장, 활성화 env).
+  - 커넥터: value만 AvroConverter(auto-register), key는 JSON 유지(컨슈머 키 경로 무변경). ★ 같은 이름 재등록 시 `_connect_offsets`에 옛 오프셋이 남아 스냅샷 생략됨 → **등록→stop→`DELETE /connectors/{name}/offsets`→resume**으로 강제 재스냅샷(Kafka 3.7 API). 재스냅샷 580,069 = 기준선 정확 일치.
+  - 컨슈머: `AvroKafkaDeserializer`를 `ErrorHandlingDeserializer`로 래핑(poison→poll 무한루프 대신 DLQ). CdcParser JSON→GenericRecord 전환(Utf8→String 등 표준화, 스키마에 없는 필드 null 방어). DLT 발행은 값 타입별 템플릿 2종(역직렬화 실패=원본 byte[]·리스너 실패=Avro 재직렬화). 테스트 13종 Avro 픽스처로 재작성, 전부 통과.
+  - ★ DLQ poison 라이브 검증: 쓰레기 바이트 주입 → 재시도 루프 없이 `<topic>.DLT`에 원본 byte[] 그대로 격리, 카운터+1, 컨슈머 생존. 이전 세션 미커밋 오프셋 재소비(동일 _seq 중복 d)는 읽기 dedup이 자연 흡수 — at-least-once 설계 실증. (리스너 실패→Avro 재직렬화 DLT 경로는 설정만 검증 — App-2 때와 동일 수준)
+  - ★ 정합성: Avro 랜딩 580,069줄 → 재구성 settlement_agg 9,795행 **체크섬 = DuckDB 정답지와 비트 동일** (JSON→Avro 전환 무손실 증명).
+  - ★ 진화 실증①(호환): cancel `ADD COLUMN memo` → 새 이벤트에서 스키마 v2 자동 등록, **코드 무수정 컨슈머가 무중단 처리**(landed+1, DLQ 0), projection이 memo 자연 제외. 삭제 전파(c→d, LSN 단조)도 확인.
+  - ★ 진화 실증②(거부): BACKWARD 규칙 하에 필드 추가(옵셔널)=200 통과 / `reason_code` int→string 타입 변경=**409 RuleViolationException 거부**.
+  - ⚠️ 한계(실측): Apicurio 2.4.1은 **참조(Source) 포함 아티팩트에 호환성 규칙을 걸면 기존 버전 파싱 실패(422)** → 실제 CDC 아티팩트엔 규칙 미적용 상태(진화는 auto-register로 무규칙 등록). 규칙 실사용은 레지스트리 업그레이드 또는 Source 인라인 전환 필요.
+  - ⚠️ 랜딩 백업: `data/landing.pre-avro/`(JSON 시절) 보관 중 — 검증 끝났으니 삭제 가능.
+- **Phase 9 Airflow 오케스트레이션 ✅ 완료(2026-09-01, feat/phase9-airflow)**: 수동 셸 순서 실행 → DAG.
+  - 인프라: `sp-airflow`(apache/airflow 2.10.5 standalone·LocalExecutor, :8087), 메타DB=sp-postgres `airflowdb`, 이미지에 docker CLI 정적 복사(docker:27.5.1-cli 멀티스테이지).
+  - ★ 핵심 트릭: 저장소를 **호스트와 동일 절대경로**(`REPO_HOST_PATH`, infra/.env)로 마운트 + docker.sock 공유 → 기존 `scripts/*.sh`의 `docker run -v "$PWD":/work` 패턴을 **무수정 재사용**. (root·sock 공유는 로컬 타협 — PRODUCTION-CHECKLIST §5)
+  - DAG `settlement_close`: landing_to_minio → build_iceberg → settle_and_check (재시도 1회, @daily 정의·생성 시 paused).
+  - ★ 함정 실측: bash_command가 `.sh`로 끝나면 Jinja 템플릿 파일로 오인(TemplateNotFound) → 끝 공백으로 회피(DAG 주석 기록).
+  - 검증: 1차 실패 런에서 재시도 소진→failed·하류 upstream_failed 전파(실패 시나리오 겸증) / 2차 런 3태스크 success(21초), 산출 settlement_agg 9,795행 **체크섬 정답지와 비트 동일**.
+- **Phase 10 서빙 API ✅ 완료(2026-09-01, feat/phase10-serving-api)**: 정산 조회 Spring Boot API — 로드맵 학습 후보 완주.
+  - 구조: 레이크 산출(e2e_iceberg.duckdb) → `publish-serving.sh`(TRUNCATE+COPY 멱등, 건수 자체검증) → **sp-postgres `servedb`**(DDL=infra/postgres/serving.sql) → `serving/` JPA read-only API(:8091 루프백). DAG 4번째 태스크 `publish_serving`으로 오케스트레이션 편입.
+  - 서빙 스토어를 분리한 이유: DuckDB 단일 writer(배치 재작성과 조회 충돌) + 레이크→서빙 적재가 실무 표준 + 확정 설계(서빙=JPA·ID 참조 패턴).
+  - API: `GET /api/v1/settlements/{date}`(파트너 요약, 페이징) · `/{date}/partners/{id}`(수단별 상세, 없으면 404). 전 엔드포인트 X-API-Key(env `SERVING_API_KEY`, 상수시간 비교), 입력 검증(ISO 날짜·@Positive), 오류 응답에 내부 정보 미노출.
+  - 검증: 키 없음/오류=401 · 파트너1 CARD 157,817,622/3,945,482/153,872,140 = **04_checks 출력과 정확히 일치** · 테스트 8/0/0(given/when/then, 합성 픽스처) · gradle.lockfile 적용.
+- **운영 전환 문서 ✅ (2026-09-01)**: `docs/PRODUCTION-CHECKLIST.md` — 로컬 타협 전수(통신·인증·시크릿·가용성·공급망·스키마 거버넌스·관측·도메인) → 운영 요구 + 착수 우선순위.
 
 ## 남은 일 (우선순위)
 
 1. ~~본 DB에 v3 반영 + 멱등 재확인~~ ✅ 완료 + 재현성까지 해결(2026-06-11)
 2. 텍스트 문서 v3 동기화 ✅ 완료(2026-06-11): SCHEMA·DATA-LAYOUT·DOMAIN-NOTES·ROADMAP·DESIGN·ENVIRONMENT
-   - ⬜ 남음: **다이어그램 HTML 3종**(architecture/system-architecture/aws-architecture) — v1 기준, 거의 재작성 필요
+   - architecture.html ✅ 재작성(2026-07-02) · ⬜ 남음: **다이어그램 HTML 2종**(system-architecture/aws-architecture) — v1 기준, 재작성 필요
 3. (옵션) 결제수단별 차등수수료를 partner×method 2차원으로 확장 / 환불 대사(정산 밖이라 보류)
-4. 2단계: 실시간 수집 (Postgres + Debezium + Kafka)
+4. ~~2단계: 실시간 수집~~ ✅ 완료(2026-06-17) — 이후 진행 상황은 위 "2단계~" 섹션들 참조

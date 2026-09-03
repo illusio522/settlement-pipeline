@@ -18,7 +18,7 @@
 --     - 마스터(partner·mid_map·method_type·method_fee)는 CDC 아님 → Postgres에 없음
 --     - 소스는 현실적으로 풍부하게, 정산은 싱크에서 필요 컬럼만 projection
 --       (수단별 4원장 → 싱크에서 UNION+정규화 → canonical payment_method)
---   코드값: type 1=PAY 2=CANCEL · brand 1=musinsa 2=29cm · 금액 BIGINT(원)
+--   코드값: type 1=PAY 2=CANCEL · brand 1=mall-a 2=mall-b · 금액 BIGINT(원)
 -- ============================================================
 
 -- ---------- 결제 도메인 ----------
@@ -29,7 +29,7 @@ CREATE DATABASE paydb;
 CREATE TABLE payment (
     txn_id       BIGINT PRIMARY KEY,                      -- 거래 ID
     order_no     BIGINT       NOT NULL,
-    brand        SMALLINT     NOT NULL,                   -- 1=musinsa 2=29cm
+    brand        SMALLINT     NOT NULL,                   -- 1=mall-a 2=mall-b
     amount       BIGINT       NOT NULL,                   -- 결제 총액(원)
     currency     CHAR(3)      NOT NULL DEFAULT 'KRW',
     type         SMALLINT     NOT NULL,                   -- 1=PAY 2=CANCEL
