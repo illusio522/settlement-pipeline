@@ -21,7 +21,7 @@
 ---
 
 ## ✅ 단계 0 — 설계 (완료)
-- 산출물: `docs/DESIGN.md`, `docs/SCHEMA.md`, 다이어그램 3종(`architecture.html` / `system-architecture.html` / `aws-architecture.html`)
+- 산출물: `docs/DESIGN.md`, `docs/SCHEMA.md`, 다이어그램 3종(architecture/system-architecture/aws-architecture — 2026-09-03 `docs/pipeline.html`로 통합)
 - 확정: 결제 원장엔 partner 없음 / 주문상품에서 partner / 복합결제(주2+보조2) / 결제수단별 차등수수료(method_fee, as-of) / 결제·주문 CDC·마스터 스냅샷 / settlement_event FREEZE(불변 원장) / 정산≠환불 / 정산은 상류를 projection으로 보유
 - 메시지 버퍼 = **Kafka(KRaft)** 확정 (Redpanda 후보였으나 자바/운영 표준성 고려해 Kafka)
 - DuckDB 컴퓨트: 도커 이미지 `settlement-duckdb:1.5.3`
