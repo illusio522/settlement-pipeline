@@ -18,8 +18,18 @@ INSERT/UPDATE/DELETE → ①WAL 기록(LSN 부여) → ②테이블 반영
 Debezium은 ①의 스트림을 수신 (테이블은 안 건드림 · WAL 파일 직접 접근도 없음 — 서버가 읽어줌)
 ```
 
-- `wal_level=logical` : WAL에 "행의 논리적 내용"까지 기록하게 격상 (CDC의 유일한 소스측 전제.
-  기본 replica 레벨은 복구·물리복제용이라 행 해석 불가)
+### wal_level 3단계 — "이 로그의 독자가 누구까지인가"
+
+| 레벨 | 독자 | 적는 수준 | 가능해지는 것 |
+|---|---|---|---|
+| `minimal` | DB 자신만 | 자기 복구용 최소 (대량 적재는 WAL 스킵 최적화까지) | 크래시 복구뿐 |
+| `replica` (기본값) | + 복사본·백업 | 물리 재생 가능한 완전 기록 ("페이지 X 오프셋 Y를 이 바이트로") | 물리 복제·PITR |
+| `logical` (우리) | + 해석자(CDC) | + 행의 논리 신원 (어느 릴레이션, 행 식별 키 값) | 논리 디코딩·CDC |
+
+- 상위가 하위를 포함. `context=postmaster` — **변경엔 재시작 필요** (기존 DB에 CDC 달 때의 유일한 다운타임 지점. ALTER SYSTEM 후 재기동, HA면 standby 먼저+스위치오버로 압축 가능)
+- 양 차이 실감: 새 테이블에 1GB COPY 시 minimal은 WAL 증가 ~0(지름길 허용), replica/logical은 ~1GB(복사본이 따라 써야 하므로 전량 로그행). replica↔logical 차이는 행당 신원 정보 몇십 바이트(통상 수 %)
+- **처음부터 logical로 시작해도 무방** — 비용은 WAL 수 %뿐. 숙제는 slot 감시(§3)가 세트
+- ★ 실물(pg_waldump 실측): logical WAL 레코드조차 본체는 좌표다 — `rel 1663/16431/16602 blk 72 off 130` ("cancel"이라는 글자 없음, 16602→cancel 번역은 디코더가 카탈로그로). logical이 더한 것은 DELETE 레코드에 동봉된 **지워진 행의 키 값** 같은 논리 신원 — 이 동봉이 op='d' 봉투(before)의 원재료. "replica=좌표만 / logical=좌표+이름표"이지, 암호문/평문 관계가 아님(둘 다 바이너리)
 - **LSN** : WAL 테이프 위의 바이트 위치. DB 전역 단조 증가 → 랜딩 `_seq`의 원천
   (여러 토픽을 합류시켜도 최신 판별이 흔들리지 않는 유일한 좌표 — STATUS 3-4의 교훈)
 
@@ -114,6 +124,38 @@ FROM pg_replication_slots;
 | Debezium heartbeat | 미설정 | `heartbeat.interval.ms` — 한가한 DB에서 ack이 멈춰 WAL 적체되는 함정 대응 |
 
 ---
+
+## 3.5 커넥터 기동 시퀀스 — t1~t5 상세
+
+Debezium task는 PG에 **접속을 두 개** 연다. 같은 5432, 인사말만 다름:
+
+```
+접속① SQL 창구   ("user=settle dbname=paydb")            → backend 배정 — 묻고 답하는 창구
+접속② 복제 창구  (+ "replication=database")               → walsender 배정 — 틀어두는 스트림 창구
+```
+※ "복제 창구"의 복제는 창구 종류이고 wal_level의 replica는 로그 상세도 — 단어만 같은 남남.
+
+```
+t1.   접속① 개통 → 검증 조회 (SELECT version(); SHOW wal_level; ...)
+        ├ 답하는 자 = PG (사실만) / 판정하는 자 = Debezium (자기 요구사항 목록과 대조)
+        ├ 이건 권한 심사가 아니라 "적합성" 자가 확인 — 기준(내 요구)은 요청자만 앎. fail-fast용
+        └ 진짜 심사는 PG 몫: 인증(pg_hba+비밀번호, 접속 순간)·인가(REPLICATION 권한, t3.2)·정원(max 10)
+t1.5  Kafka _connect_offsets에서 진도 조회 → 있으면 t5로 직행(재시작 경로) / 없으면 계속(첫 등록)
+t3.   접속② 개통 → CREATE_REPLICATION_SLOT dbz_pay_slot LOGICAL pgoutput
+        └ 응답 = 같은 찰나의 두 좌표: ①LSN(로그 축 말뚝) ②스냅샷 이름(그 순간의 MVCC 가시성 세트 export)
+          ★ 순서가 생명: 스냅샷을 먼저 읽고 slot을 나중에 만들면 그 사이 변경이 유실됨(이음새 구멍)
+t2'+t4'. 접속①에서 한 트랜잭션으로:
+        BEGIN REPEATABLE READ → SET TRANSACTION SNAPSHOT '그 이름' (눈을 말뚝 찰나로 고정)
+        → 카탈로그로 설계도(컬럼·타입·PK) 읽기 → SELECT * 5테이블 → 행마다 op='r' 봉투 발행
+        → 완료 표시를 오프셋에 기록 (도중 사망 시 표시가 없어 재스냅샷 — at-least-once, dedup이 흡수)
+        └ 설계도와 데이터가 같은 찰나 기준 → 스냅샷 중 ALTER가 와도 어긋날 수 없음
+t5.   접속②: START_REPLICATION ... 말뚝LSN → COPY-both 모드 → 상시 스트림
+        └ 스냅샷(찰나까지 커밋분)과 스트림(찰나 이후분)은 상보 — 합집합 전부, 교집합 없음
+```
+
+- 스키마 획득은 세 국면: **매 기동 시** 카탈로그 조회(재시작에도 다시 — 자는 새 구조가 바뀌었을 수 있으니) / 스트리밍 중 **Relation 메시지**(구조 변경 시 새 설계도가 스트림에 실려옴 — ADD COLUMN 무중단의 원리) / 필요 시 접속① 보조
+- 책갈피 두 개의 분업: Kafka 오프셋 = "어디까지 발행했나"(t1.5 분기 근거) / PG slot = "어디까지 보관 의무인가"(유실 방지 근거)
+- 스트리밍 정착 후: 접속②가 주인공, 접속①은 대기(살림·heartbeat용) — 안 쓰는 게 아니라 국면별 분업
 
 ## 4. 메시지 탄생 여정 (한 건의 INSERT가 브로커에 안착하기까지)
 
