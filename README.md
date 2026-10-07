@@ -50,4 +50,4 @@
 ## 테스트 파라미터 (조정 가능)
 브랜드 2 / 파트너 100(몰A 70% 스큐) / 결제 100만~1,000만(1억 옵션) / 일 단위 정산
 
-자세한 설계는 [docs/DESIGN.md](docs/DESIGN.md), 환경은 [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md).
+자세한 설계는 [docs/DESIGN.md](docs/DESIGN.md), 구동·복구는 [docs/RUNBOOK.md](docs/RUNBOOK.md), CDC 해설은 [docs/CDC.md](docs/CDC.md).

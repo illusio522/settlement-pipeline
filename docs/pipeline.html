@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>정산 파이프라인 — 아키텍처 & 데이터 흐름</title>
+<style>
+  :root{
+    --bg:#0f1420;--panel:#171e2e;--line:#2a3550;--txt:#dce3f0;--dim:#8593ad;
+    --acc:#8fb2ff;--chg:#e8c06a;--ok:#7fd4a8;--key:#9db4de;--str:#b5e0a0;--num:#e0b080;
+    --src:#4a7dbd;--cdc:#c0704a;--kafka:#7a5abd;--app:#3f9d6e;--lake:#bd9a3f;--obs:#b05070;--payout:#c9a24b;--srv:#5aa7a0;
+    --done:#3f9d6e;--wip:#d9a13f;--todo:#5a6580;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif;padding:22px 26px}
+  h1{font-size:20px;margin-bottom:4px}
+  h1 .oid{color:var(--acc)}
+  .sub{color:var(--dim);font-size:12.5px;margin-bottom:14px}
+  code{background:#0c1018;padding:1px 5px;border-radius:4px;font-size:11.5px;color:#a8c7ff}
+
+  /* ── 뷰 전환 탭 ── */
+  .tabs{display:flex;gap:8px;margin-bottom:18px}
+  .tab{background:#1a2233;border:1px solid var(--line);color:var(--dim);border-radius:10px;
+       padding:9px 18px;font-size:13.5px;font-weight:700;cursor:pointer;transition:.15s}
+  .tab:hover{border-color:#5b6d94;color:var(--txt)}
+  .tab.on{background:#233252;border-color:var(--acc);color:var(--acc)}
+  section[hidden]{display:none}
+
+  /* ══ 뷰① 아키텍처 ══ */
+  #view-arch .legend{display:flex;gap:14px;font-size:11.5px;color:var(--dim);margin-bottom:18px;flex-wrap:wrap}
+  #view-arch .legend b{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px}
+  #view-arch .wrap{display:flex;gap:18px;align-items:flex-start}
+  #view-arch .diagram{flex:1;min-width:0}
+  #view-arch .lane{display:flex;align-items:center;gap:0;margin-bottom:14px}
+  #view-arch .lane-label{width:86px;flex-shrink:0;font-size:11px;color:var(--dim);text-align:right;padding-right:12px;line-height:1.4}
+  #view-arch .lane-body{flex:1;display:flex;gap:8px;align-items:stretch;flex-wrap:wrap}
+  #view-arch .node{background:var(--panel);border:1.5px solid var(--line);border-left-width:4px;border-radius:9px;
+        padding:9px 12px;cursor:pointer;transition:.15s;min-width:120px;position:relative}
+  #view-arch .node:hover{transform:translateY(-2px);border-color:#5b6d94}
+  #view-arch .node.active{border-color:#8fb2ff;box-shadow:0 0 0 2px #8fb2ff33}
+  #view-arch .node .nm{font-size:13px;font-weight:700}
+  #view-arch .node .tech{font-size:10.5px;color:var(--dim);margin-top:2px}
+  .badge{position:absolute;top:-7px;right:-6px;font-size:9px;padding:1.5px 7px;border-radius:8px;color:#fff;font-weight:700}
+  .b-done{background:var(--done)}
+  #view-arch .arrow{width:100%;text-align:center;color:var(--dim);font-size:14px;margin:-6px 0 8px 86px;letter-spacing:2px}
+  #view-arch .detail{width:360px;flex-shrink:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+          padding:18px;position:sticky;top:20px;min-height:280px}
+  #view-arch .detail h2{font-size:15px;margin-bottom:2px}
+  #view-arch .detail .role{font-size:11.5px;color:var(--dim);margin-bottom:12px}
+  #view-arch .detail dl{font-size:12.5px;line-height:1.65}
+  #view-arch .detail dt{color:#9db4de;font-weight:700;margin-top:10px;font-size:11.5px}
+  #view-arch .detail dd{margin-left:0;color:var(--txt)}
+  #view-arch .detail .hint{color:var(--dim);font-size:12.5px;line-height:1.7}
+  #view-arch .roadmap{margin-top:26px;border-top:1px solid var(--line);padding-top:16px}
+  #view-arch .roadmap h3{font-size:13px;margin-bottom:10px;color:#9db4de}
+  #view-arch .steps{display:flex;gap:6px;flex-wrap:wrap}
+  #view-arch .step{font-size:11px;padding:5px 10px;border-radius:14px;border:1px solid var(--done);color:#7fd4a8}
+
+  /* ══ 뷰② 데이터 흐름 ══ */
+  #view-flow .controls{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  #view-flow .btn{background:#233252;color:var(--txt);border:1px solid #35496f;border-radius:9px;padding:8px 16px;
+       font-size:13px;cursor:pointer;font-weight:700;transition:.12s}
+  #view-flow .btn:hover{background:#2c3f66}
+  #view-flow .btn.play{background:#1f5c3f;border-color:#2f8a5e}
+  #view-flow .btn.play:hover{background:#256f4c}
+  #view-flow .btn.play.on{background:#7a4a1f;border-color:#b0702f}
+  #view-flow .speed{display:flex;gap:4px;align-items:center;margin-left:6px}
+  #view-flow .speed span{font-size:11.5px;color:var(--dim)}
+  #view-flow .sp{background:#1a2233;border:1px solid var(--line);color:var(--dim);border-radius:7px;padding:5px 9px;font-size:11.5px;cursor:pointer}
+  #view-flow .sp.on{border-color:var(--acc);color:var(--acc)}
+  #view-flow .prog{margin-left:auto;color:var(--dim);font-size:12px}
+  .boardwrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:#121828;padding:14px;margin-bottom:16px}
+  .board{position:relative;width:1060px;height:470px;margin:0 auto}
+  svg.links{position:absolute;inset:0;pointer-events:none;overflow:visible}
+  path.link{fill:none;stroke:#38466a;stroke-width:2}
+  path.link.dash{stroke-dasharray:5 5;stroke:#4a3f6a}
+  path.link.flow{stroke:var(--acc);stroke-width:3.2;filter:drop-shadow(0 0 5px #8fb2ffcc)}
+  path.link.flow.dashflow{stroke:var(--obs)}
+  .grp{position:absolute;border:1.6px dashed #b39a4a80;border-radius:14px;background:#bd9a3f0d;transition:.25s;cursor:pointer;z-index:2}
+  .grp:hover{border-color:#d7b85f}
+  .grp.on{border-color:var(--lake);background:#bd9a3f1f;box-shadow:0 0 20px -3px var(--lake)}
+  .grp.active{border-style:solid;border-color:var(--acc);background:#bd9a3f1f;box-shadow:0 0 0 2px #8fb2ff44,0 0 22px -2px var(--lake)}
+  .grp .stepno{position:absolute;top:-11px;left:-9px;width:22px;height:22px;border-radius:50%;
+               background:var(--bg);border:1.5px solid var(--line);font-size:10.5px;font-weight:700;
+               color:var(--dim);display:flex;align-items:center;justify-content:center;z-index:6}
+  .grp.active .stepno{border-color:var(--acc);color:var(--acc)}
+  .grp.passed .stepno{background:var(--ok);color:#10241a;border-color:var(--ok)}
+  .grp .gtab{position:absolute;top:-12px;left:16px;background:#121828;padding:2px 10px;font-size:10.5px;
+             color:#d7b85f;border:1px solid #b39a4a66;border-radius:7px;white-space:nowrap}
+  .pnode{position:absolute;background:var(--panel);border:1.5px solid var(--line);border-top-width:4px;
+         border-radius:11px;padding:8px 11px;cursor:pointer;transition:.18s;z-index:3;display:flex;
+         flex-direction:column;justify-content:center}
+  .pnode:hover{transform:translateY(-2px);border-color:#5b6d94}
+  .pnode.active{border-color:var(--acc);box-shadow:0 0 0 2px #8fb2ff44,0 8px 20px #0007;z-index:4}
+  .pnode.passed .stepno{background:var(--ok);color:#10241a;border-color:var(--ok)}
+  .pnode .stepno{position:absolute;top:-9px;left:-8px;width:21px;height:21px;border-radius:50%;
+                 background:var(--panel);border:1.5px solid var(--line);font-size:10px;font-weight:700;
+                 color:var(--dim);display:flex;align-items:center;justify-content:center;z-index:5}
+  .pnode.active .stepno{border-color:var(--acc);color:var(--acc)}
+  .pnode .hd{display:flex;align-items:center;gap:6px}
+  .pnode .ic{font-size:15px;line-height:1}
+  .pnode .nm{font-size:12.5px;font-weight:700;line-height:1.2}
+  .pnode .tech{font-size:9.5px;color:var(--dim);margin-top:3px;line-height:1.3}
+  .pnode.sup{cursor:pointer;opacity:.72;border-top-width:1.5px;border-style:dashed}
+  .pnode.sup:hover{transform:none;opacity:.9}
+  .pnode.sup.on{opacity:1;box-shadow:0 0 14px -2px currentColor}
+  .packet{position:absolute;width:16px;height:16px;border-radius:50%;background:var(--acc);
+          box-shadow:0 0 0 5px #8fb2ff33,0 0 16px 4px #8fb2ffaa;transform:translate(-50%,-50%);
+          transition:left .62s cubic-bezier(.5,0,.2,1),top .62s cubic-bezier(.5,0,.2,1);z-index:9;pointer-events:none}
+  .packet::after{content:'주문 64823';position:absolute;bottom:16px;left:50%;transform:translateX(-50%);
+                 white-space:nowrap;font-size:9.5px;color:var(--acc);font-weight:700;text-shadow:0 0 6px #000}
+  .packet.hop{animation:hop .62s ease}
+  @keyframes hop{0%{transform:translate(-50%,-50%) scale(1)}45%{transform:translate(-50%,-50%) scale(1.55)}100%{transform:translate(-50%,-50%) scale(1)}}
+  #view-flow .view{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 22px;min-height:300px}
+  #view-flow .view h2{font-size:16px;color:var(--acc)}
+  #view-flow .view .where{font-size:11.5px;color:var(--dim);margin:3px 0 4px}
+  #view-flow .view .does{font-size:12.5px;color:var(--chg);font-weight:700;margin:8px 0 10px;padding:7px 11px;
+              background:#241f12;border-left:3px solid var(--chg);border-radius:6px}
+  #view-flow .view .desc{font-size:13px;line-height:1.75;margin-bottom:12px}
+  #view-flow .view .desc b{color:var(--chg)}
+  #view-flow .datalabel{font-size:11px;color:var(--key);font-weight:700;margin:14px 0 6px;letter-spacing:.4px}
+  #view-flow pre{background:#0b0f18;border:1px solid #222b40;border-radius:10px;padding:13px 15px;font-size:12px;
+      line-height:1.6;overflow-x:auto;font-family:'SF Mono',Consolas,'D2Coding',monospace;white-space:pre}
+  #view-flow .k{color:var(--key)} #view-flow .s{color:var(--str)} #view-flow .n{color:var(--num)} #view-flow .c{color:#5a6885}
+  #view-flow .hl{background:#3d3418;border-radius:3px;padding:0 3px;color:var(--chg)}
+  #view-flow table{border-collapse:collapse;font-size:12px;width:100%;font-family:'SF Mono',Consolas,'D2Coding',monospace}
+  #view-flow th{color:var(--key);text-align:left;padding:5px 10px;border-bottom:1px solid var(--line);font-size:11px}
+  #view-flow td{padding:4.5px 10px;border-bottom:1px solid #1e2740}
+  #view-flow td.hl2{color:var(--chg)}
+  #view-flow .note{margin-top:12px;font-size:11.5px;color:var(--dim);line-height:1.6;border-top:1px dashed var(--line);padding-top:10px}
+</style>
+</head>
+<body>
+<h1>대규모 파트너 정산 파이프라인</h1>
+<div class="sub">학습·검증 프로젝트 (전부 로컬 도커) · Phase 0~10 완주 — 소스 CDC부터 서빙 API까지</div>
+<div class="tabs">
+  <button class="tab on" data-view="view-arch">🏗 아키텍처</button>
+  <button class="tab" data-view="view-flow">🎬 데이터 흐름 (재생)</button>
+</div>
+
+<!-- ══════════ 뷰① 아키텍처 ══════════ -->
+<section id="view-arch">
+<div class="legend">
+  <span><b style="background:var(--src)"></b>소스</span>
+  <span><b style="background:var(--cdc)"></b>수집(CDC)</span>
+  <span><b style="background:var(--kafka)"></b>메시징·스키마</span>
+  <span><b style="background:var(--app)"></b>애플리케이션</span>
+  <span><b style="background:var(--lake)"></b>레이크하우스·컴퓨트</span>
+  <span><b style="background:var(--srv)"></b>서빙</span>
+  <span><b style="background:var(--obs)"></b>관측</span>
+</div>
+
+<div class="wrap">
+<div class="diagram" id="diagram">
+
+  <div class="lane"><div class="lane-label">소스<br>(OLTP)</div><div class="lane-body">
+    <div class="node" style="border-left-color:var(--src)" data-k="pg"><span class="badge b-done">완료</span><div class="nm">Postgres</div><div class="tech">paydb · orderdb · :5432</div></div>
+  </div></div>
+  <div class="arrow">↓ WAL (wal_level=logical)</div>
+
+  <div class="lane"><div class="lane-label">수집<br>(CDC)</div><div class="lane-body">
+    <div class="node" style="border-left-color:var(--cdc)" data-k="dbz"><span class="badge b-done">완료</span><div class="nm">Debezium</div><div class="tech">Kafka Connect · Avro 발행 · :8083</div></div>
+  </div></div>
+  <div class="arrow">↓ 체인지 이벤트 (Avro · key=PK · source.lsn)</div>
+
+  <div class="lane"><div class="lane-label">메시징<br>·스키마</div><div class="lane-body">
+    <div class="node" style="border-left-color:var(--kafka)" data-k="kafka"><span class="badge b-done">완료</span><div class="nm">Kafka (KRaft)</div><div class="tech">7토픽 × 4파티션 · :29092</div></div>
+    <div class="node" style="border-left-color:var(--kafka)" data-k="apicurio"><span class="badge b-done">완료 P8</span><div class="nm">Apicurio 레지스트리</div><div class="tech">Avro 스키마 계약 · :8085</div></div>
+    <div class="node" style="border-left-color:var(--kafka)" data-k="dlt"><span class="badge b-done">완료</span><div class="nm">DLT (실패 격리)</div><div class="tech">&lt;topic&gt;.DLT</div></div>
+    <div class="node" style="border-left-color:var(--kafka)" data-k="kui"><span class="badge b-done">완료</span><div class="nm">Kafka UI</div><div class="tech">:8081</div></div>
+  </div></div>
+  <div class="arrow">↓ 컨슘 (8스레드 · CooperativeSticky · Avro 역직렬화)</div>
+
+  <div class="lane"><div class="lane-label">애플리<br>케이션</div><div class="lane-body">
+    <div class="node" style="border-left-color:var(--app)" data-k="consumer"><span class="badge b-done">완료</span><div class="nm">싱크 컨슈머 normalize</div><div class="tech">Spring Boot 3 · Java 21 · :8090</div></div>
+  </div></div>
+  <div class="arrow">↓ append (테이블×파티션 16샤드 · _op/_seq=LSN)</div>
+
+  <div class="lane"><div class="lane-label">랜딩</div><div class="lane-body">
+    <div class="node" style="border-left-color:var(--lake)" data-k="landing"><span class="badge b-done">완료</span><div class="nm">랜딩 NDJSON</div><div class="tech">append-only · 읽기시점 dedup</div></div>
+  </div></div>
+  <div class="arrow">↓ 적재/변환</div>
+
+  <div class="lane"><div class="lane-label">레이크<br>하우스</div><div class="lane-body">
+    <div class="node" style="border-left-color:var(--lake)" data-k="minio"><span class="badge b-done">완료</span><div class="nm">MinIO</div><div class="tech">S3 호환 · :9000/:9001</div></div>
+    <div class="node" style="border-left-color:var(--lake)" data-k="nessie"><span class="badge b-done">완료</span><div class="nm">Nessie 카탈로그</div><div class="tech">Iceberg REST · :19120</div></div>
+    <div class="node" style="border-left-color:var(--lake)" data-k="medallion"><span class="badge b-done">완료 P6/7</span><div class="nm">Iceberg 메달리온</div><div class="tech">🥉bronze · 🥈silver · 🥇gold</div></div>
+  </div></div>
+  <div class="arrow">↕ 읽기/쓰기 (카탈로그 경유) · 체인 실행 = Airflow DAG</div>
+
+  <div class="lane"><div class="lane-label">컴퓨트<br>·배치</div><div class="lane-body">
+    <div class="node" style="border-left-color:var(--lake)" data-k="duckdb"><span class="badge b-done">완료</span><div class="nm">DuckDB</div><div class="tech">정산 배치 · 검증 기준</div></div>
+    <div class="node" style="border-left-color:var(--lake)" data-k="dbt"><span class="badge b-done">완료</span><div class="nm">dbt</div><div class="tech">15모델 · incremental</div></div>
+    <div class="node" style="border-left-color:var(--lake)" data-k="spark"><span class="badge b-done">완료 P6/7</span><div class="nm">Spark</div><div class="tech">burst · 정산 포팅</div></div>
+    <div class="node" style="border-left-color:var(--lake)" data-k="airflow"><span class="badge b-done">완료 P9</span><div class="nm">Airflow</div><div class="tech">settlement_close DAG · :8087</div></div>
+  </div></div>
+  <div class="arrow">↓ publish_serving (TRUNCATE+COPY 멱등 적재)</div>
+
+  <div class="lane"><div class="lane-label">서빙</div><div class="lane-body">
+    <div class="node" style="border-left-color:var(--srv)" data-k="servedb"><span class="badge b-done">완료 P10</span><div class="nm">servedb</div><div class="tech">Postgres 서빙 스토어</div></div>
+    <div class="node" style="border-left-color:var(--srv)" data-k="serving"><span class="badge b-done">완료 P10</span><div class="nm">서빙 API</div><div class="tech">Spring Boot · JPA read-only · :8091</div></div>
+  </div></div>
+
+  <div class="lane" style="margin-top:8px"><div class="lane-label">관측</div><div class="lane-body">
+    <div class="node" style="border-left-color:var(--obs)" data-k="prom"><span class="badge b-done">완료</span><div class="nm">Prometheus</div><div class="tech">:9090 · 5s 스크랩</div></div>
+    <div class="node" style="border-left-color:var(--obs)" data-k="grafana"><span class="badge b-done">완료</span><div class="nm">Grafana</div><div class="tech">통합 대시보드 · :3000</div></div>
+  </div></div>
+
+  <div class="roadmap">
+    <h3>로드맵 — 전 단계 완료 (2026-09-01 완주)</h3>
+    <div class="steps">
+      <span class="step">1 정산로직(DuckDB) ✓</span>
+      <span class="step">2 실시간수집(CDC·Kafka) ✓</span>
+      <span class="step">3 레이크·dbt·증분 ✓</span>
+      <span class="step">4 성능·병렬화·관측 ✓</span>
+      <span class="step">P5 쓰기 샤딩 ✓</span>
+      <span class="step">App-2 DLQ ✓</span>
+      <span class="step">App-3 dbt incremental ✓</span>
+      <span class="step">P6/7 Spark 레이크하우스 ✓</span>
+      <span class="step">P8 Avro·레지스트리 ✓</span>
+      <span class="step">P9 Airflow ✓</span>
+      <span class="step">P10 서빙 API ✓</span>
+    </div>
+  </div>
+</div>
+
+<aside class="detail" id="detail">
+  <h2>노드를 클릭하세요</h2>
+  <div class="role">컴포넌트를 클릭하면 역할·상태·검증 내용이 표시됩니다.</div>
+  <div class="hint">
+    데이터 흐름: <b>Postgres → Debezium(CDC·Avro) → Kafka → 컨슈머 → 랜딩(샤드) → 레이크하우스(Iceberg) → 정산(Gold) → servedb → 서빙 API</b><br><br>
+    핵심 설계: 물리 FK 없음(논리 FK+대사) · 읽기시점 dedup(<code>_seq=LSN</code>) · 순서무관 멱등 → 병렬/재처리/장애 안전 · 배치 체인은 Airflow DAG가 오케스트레이션
+  </div>
+</aside>
+</div>
+</section>
+
+<!-- ══════════ 뷰② 데이터 흐름 (재생) ══════════ -->
+<section id="view-flow" hidden>
+<div class="sub" style="margin-top:-4px">주문 <span class="oid" style="color:var(--acc)">64823</span> 이 인프라를 타고 흐릅니다 · ▶ 재생 또는 노드/◀ ▶ 키 · 예시값은 샘플</div>
+
+<div class="controls">
+  <button class="btn play" id="playBtn">▶ 재생</button>
+  <button class="btn" id="resetBtn">↺ 처음으로</button>
+  <button class="btn" id="prevBtn">◀ 이전</button>
+  <button class="btn" id="nextBtn">다음 ▶</button>
+  <div class="speed"><span>속도</span>
+    <span class="sp" data-sp="1.6">0.5×</span>
+    <span class="sp on" data-sp="1">1×</span>
+    <span class="sp" data-sp="0.5">2×</span>
+  </div>
+  <span class="prog" id="prog"></span>
+</div>
+
+<div class="boardwrap" id="boardwrap">
+  <div class="board" id="board">
+    <svg class="links" id="links" viewBox="0 0 1060 470" width="1060" height="470">
+      <defs>
+        <marker id="arw" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#4a5b82"></path>
+        </marker>
+        <marker id="arwf" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#8fb2ff"></path>
+        </marker>
+      </defs>
+    </svg>
+    <div class="grp" id="lakebox" style="left:210px;top:205px;width:486px;height:118px">
+      <div class="gtab">🧊 Lakehouse — Apache Iceberg 테이블 (스토리지 + 카탈로그 분리)</div>
+    </div>
+    <div class="packet" id="packet"></div>
+  </div>
+</div>
+
+<div class="view" id="view"></div>
+</section>
+
+<script>
+/* ══ 공통: 탭 전환 ══ */
+const sections={};
+document.querySelectorAll('section[id^=view-]').forEach(s=>sections[s.id]=s);
+let activeView='view-arch';
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+  t.classList.add('on');
+  activeView=t.dataset.view;
+  Object.entries(sections).forEach(([id,el])=>el.hidden=(id!==activeView));
+  if(activeView==='view-flow' && cur>=0) positionPacket();   // 숨김 상태서 좌표 0 되는 것 보정
+});
+
+/* ══ 뷰① 아키텍처 — 노드 상세 ══ */
+const D = {
+ pg:{t:"Postgres (소스 OLTP)",r:"결제·주문 원천 DB — 도메인 분리",d:{
+  "구성":"paydb = payment(헤더) + 수단별 4원장(card/money/point/coupon) · orderdb = order_item, cancel",
+  "설계":"물리 FK 전면 미사용(논리 FK, JPA·락경합·샤딩 고려) → 무결성은 앱 Tx + 사후 대사가 검증",
+  "CDC 준비":"wal_level=logical · publication 2개(dbz_pay 5테이블 / dbz_order 2테이블)",
+  "접속":"localhost:5432"}},
+ dbz:{t:"Debezium (CDC)",r:"WAL을 읽어 행 변경을 Avro 이벤트로 발행",d:{
+  "동작":"INSERT/UPDATE/DELETE → {before, after, op, source.lsn} 봉투. 메시지 key = PK(JSON), value = Avro",
+  "★ LSN":"source.lsn이 랜딩의 _seq — DB 전역 단조라 여러 토픽 합류에도 최신 판별 가능(오프셋은 토픽별이라 부적합, 실측으로 체득)",
+  "Avro(P8)":"내장 Apicurio 컨버터(ENABLE_APICURIO_CONVERTERS) · auto-register · 재스냅샷은 등록→stop→offsets DELETE→resume",
+  "커넥터":"pay/order 2개 · pgoutput · snapshot.mode=initial · localhost:8083/connectors"}},
+ kafka:{t:"Kafka (KRaft)",r:"체인지 이벤트 버퍼·전달 — 주키퍼 없는 단일 브로커",d:{
+  "토픽":"7개(payment·4원장·order_item·cancel) × 4파티션 = 28파티션 · kafka-data 볼륨 영속",
+  "샤딩":"프로듀서 내장 파티셔너가 hash(key)%4 — 같은 주문은 같은 파티션(순서 보장 단위)",
+  "학습한 것":"리밸런스 트리거·타이밍·배분전략(Range는 절반 놀림→CoopSticky)·장애복구·포이즌 — docs/KAFKA-CONSUMER.md",
+  "정직한 한계":"브로커 1대·RF=1 = 학습용. 운영 요구는 docs/PRODUCTION-CHECKLIST.md"}},
+ apicurio:{t:"Apicurio 레지스트리 (P8)",r:"Avro 스키마 계약 관리 — 진화는 통과, 파괴는 차단",d:{
+  "구성":"2.4.1.Final(Connect 내장 컨버터와 동일 버전 실측) · kafkasql 스토리지(스키마가 Kafka 토픽에 → kafka-data 볼륨 영속)",
+  "실증①":"ADD COLUMN → 새 스키마 v2 자동 등록, 코드 무수정 컨슈머 무중단 처리",
+  "실증②":"BACKWARD 규칙 하 비호환(타입 변경) 등록 → 409 RuleViolation 거부",
+  "정직한 한계":"2.4.1은 참조(Source) 포함 아티팩트에 규칙 설정 불가(422 실측) → 실제 CDC 토픽은 규칙 미적용. 운영은 업그레이드 필요",
+  "주소":"localhost:8085"}},
+ dlt:{t:"DLT — Dead Letter Topic",r:"처리 실패 메시지 격리(유실 방지) — App-2 + P8",d:{
+  "2중 방어선":"①역직렬화(poison Avro 아님) = ErrorHandlingDeserializer가 잡아 DLQ ②리스너(봉투 위반) = non-retryable 즉시 DLQ / 일시 오류 1s×3회 후 DLQ",
+  "포이즌 라이브 검증":"쓰레기 바이트 주입 → DLT에 원본 그대로 격리·루프 없음·컨슈머 생존·랜딩 무오염 (docs/KAFKA-CONSUMER.md §10)",
+  "가시성":"settlement.dlq.records 카운터 → Grafana"}},
+ kui:{t:"Kafka UI",r:"토픽·메시지·컨슈머그룹 가시화",d:{"보기":"토픽별 파티션/메시지/LAG/DLT 확인","주소":"localhost:8081"}},
+ consumer:{t:"싱크 컨슈머 normalize",r:"Kafka(Avro) → 파싱 → 정규화(canonical) → 랜딩 append",d:{
+  "스택":"Spring Boot 3 · Java 21 · Spring Kafka · GenericRecord 파서(P8)",
+  "병렬":"concurrency=8 + CooperativeSticky(28파티션을 8스레드 전원 — Range는 4명만 일함을 실측)",
+  "정규화":"수단별 4원장 → 단일 payment_method(method 1~4)",
+  "견고화":"DLQ 2중 방어선 + close() 실패 로깅(A10 수정 — 무성 유실 차단)",
+  "성능(정직)":"병렬 효과 실측 ~1.9배(70배 주장 폐기). 진짜 병목 미확인 — 측정 전 단정 안 함",
+  "메트릭":":8090/actuator/prometheus"}},
+ landing:{t:"랜딩 NDJSON (샤드)",r:"B방식 — 무상태 append, 읽기 시점 dedup",d:{
+  "샤딩(P5)":"테이블×Kafka파티션 = 16파일 — 1파티션=1스레드=전용파일=락경합 0",
+  "dedup":"key별 max(_seq) & _op≠'d' — 순서무관·멱등 → 병렬/재처리/장애 안전의 근원",
+  "실증":"at-least-once 재소비(동일 _seq 중복)도 dedup이 자연 흡수 — P8 poison 테스트에서 확인",
+  "정직한 기록":"샤딩 후 성능 불변 → '단일락=병목' 가설 반증. 정합성은 체크섬 유지"}},
+ minio:{t:"MinIO",r:"S3 호환 오브젝트 스토리지 = 레이크 저장층",d:{
+  "역할":"Parquet·Iceberg 데이터/메타 파일의 실제 보관(바이트)",
+  "경로":"s3://lake/landing(Parquet) · s3://lake/warehouse(Iceberg)",
+  "콘솔":"localhost:9001 (계정은 infra/.env)"}},
+ nessie:{t:"Nessie — Iceberg REST 카탈로그",r:"테이블 현재상태 추적·원자 커밋 = '데이터의 Git'",d:{
+  "왜 필요":"카탈로그 없으면 포인터 원자교체 주체가 없어 전체교체만 가능 → append/타임트래블은 카탈로그가 전제",
+  "실증":"append 2배치 → 옛 커밋 해시로 타임트래블 조회 성공(이력은 Nessie 커밋으로 관리)",
+  "주소":"localhost:19120"}},
+ medallion:{t:"Iceberg 메달리온 (P6/7)",r:"원본→정제→완성품 3층 품질 계층",d:{
+  "🥉 bronze":"CDC 원본 그대로(_op/_seq 보존) — 재계산의 근거",
+  "🥈 silver":"dedup canonical 4테이블 + 마스터 3",
+  "🥇 gold":"settlement_event/agg + 대사(recon)",
+  "검증":"gold 9,795행 = DuckDB 정답지와 값 체크섬 동일 · recon 0,0 · 풀 E2E 관통(2026-07-02)"}},
+ duckdb:{t:"DuckDB",r:"정산 배치의 원 엔진 — 모든 검증의 기준(정답지)",d:{
+  "정산 v3":"조인→라인배분→교차배분(라인×수단)→FREEZE(as-of 수수료)→집계→대사",
+  "실측":"100k 정산 1.7s · 1M 5.6s · 10M 57s — 단일노드도 1000만까진 빠름",
+  "검증 도구":"체크섬(hash 합) — 순서무관 데이터셋 동일성"}},
+ dbt:{t:"dbt (dbt-duckdb)",r:"SQL 변환을 선언적 DAG로 — ref() 의존 자동·테스트",d:{
+  "모델":"masters/staging/intermediate/marts 15개 · 테스트 15개(unique·relationships=고아검증)",
+  "App-3":"staging 4개 native incremental — _seq watermark + delete+insert",
+  "검증":"첫빌드=정답지 값 동일 · 멱등 · 1건 주입→그 행만 증분"}},
+ spark:{t:"Spark (P6/7)",r:"분산 컴퓨트 — Nessie 카탈로그 위에서 Iceberg append·정산",d:{
+  "방식":"burst(docker run --rm) — 상시 클러스터 없음",
+  "연결":"iceberg-spark-runtime 1.7.1 · type=rest → Nessie · S3=MinIO",
+  "검증":"bronze/silver/gold 전체 = 정답지 체크섬 동일"}},
+ airflow:{t:"Airflow (P9)",r:"수동 셸 순서 실행 → DAG 오케스트레이션",d:{
+  "DAG":"settlement_close: landing_to_minio → build_iceberg → settle_and_check → publish_serving (재시도 1회)",
+  "트릭":"저장소를 호스트 동일 절대경로로 마운트 + docker.sock 공유 → 기존 스크립트 무수정 재사용 (로컬 타협 — 운영 금지, PRODUCTION-CHECKLIST §5)",
+  "실증":"4태스크 success·체크섬 정답지 동일 / 실패 런에서 재시도 소진→하류 upstream_failed 차단",
+  "함정 실측":"bash_command가 .sh로 끝나면 Jinja 템플릿 오인 → 끝 공백으로 회피",
+  "주소":"localhost:8087"}},
+ servedb:{t:"servedb — 서빙 스토어 (P10)",r:"레이크 산출을 조회용 Postgres로 재적재",d:{
+  "왜 분리":"DuckDB는 단일 writer(배치 재작성과 조회 충돌) + 레이크→서빙 적재가 실무 표준 패턴",
+  "적재":"publish-serving.sh — TRUNCATE+COPY 멱등, 원본/서빙 건수 자체검증. DAG 4번째 태스크",
+  "스키마":"infra/postgres/serving.sql (settlement_agg, 복합 PK)"}},
+ serving:{t:"서빙 API (P10)",r:"정산 결과 조회 REST — 파트너/재무의 출력 창구",d:{
+  "엔드포인트":"GET /api/v1/settlements/{date}(파트너 요약·페이징) · /{date}/partners/{id}(수단별 상세)",
+  "보안":"전 엔드포인트 X-API-Key(env 주입·상수시간 비교) · 입력 검증 · 오류 응답에 내부정보 미노출 · JPA 파라미터 바인딩",
+  "검증":"401/400/404 경로 + 응답값 = 정산 원본과 일치 · 테스트 8종(given/when/then)",
+  "주소":"localhost:8091"}},
+ prom:{t:"Prometheus",r:"메트릭 수집·저장",d:{
+  "수집":"kafka-exporter(:9308) + 컨슈머 actuator(:8090) 5s 스크랩",
+  "정직":"단일노드(HA 없음) — 운영은 Thanos/Mimir 등"}},
+ grafana:{t:"Grafana",r:"통합 대시보드 — 카프카 + 자바 앱 한 화면",d:{
+  "패널":"LAG·소비율·유입율 / 랜딩적재율·JVM·GC / 스레드별 파티션 배정 / DLQ 격리",
+  "주소":"localhost:3000/d/settlement (익명 접속 — 로컬 한정)"}}
+};
+const detail=document.getElementById('detail');
+document.getElementById('diagram').addEventListener('click',e=>{
+  const n=e.target.closest('.node'); if(!n) return;
+  document.querySelectorAll('#view-arch .node').forEach(x=>x.classList.remove('active'));
+  n.classList.add('active');
+  const it=D[n.dataset.k]; if(!it) return;
+  let h=`<h2>${it.t}</h2><div class="role">${it.r}</div><dl>`;
+  for(const[k,v] of Object.entries(it.d)) h+=`<dt>${k}</dt><dd>${v}</dd>`;
+  detail.innerHTML=h+'</dl>';
+});
+</script>
+
+<script>
+/* ══ 뷰② 데이터 흐름 ══ */
+const NODES=[
+  // 흐름 노드 (단계 번호 있음)
+  {id:"pg",      flow:true, x:16,  y:40,  w:152,h:60, c:"--src",   ic:"🗄️", nm:"Postgres",    tech:"paydb · orderdb (OLTP)"},
+  {id:"dbz",     flow:true, x:204, y:40,  w:152,h:60, c:"--cdc",   ic:"🔁", nm:"Debezium",     tech:"CDC · Avro 발행"},
+  {id:"kafka",   flow:true, x:392, y:40,  w:152,h:60, c:"--kafka", ic:"📨", nm:"Kafka",        tech:"토픽 × 파티션 (스트리밍)"},
+  {id:"consumer",flow:true, x:580, y:40,  w:152,h:60, c:"--app",   ic:"⚙️", nm:"싱크 컨슈머 normalize", tech:"Spring Boot · 8스레드 · :8090"},
+  {id:"lake",    flow:true, box:true,     c:"--lake",  ic:"🧊", nm:"레이크하우스 저장"},
+  {id:"spark",   flow:true, x:210, y:380, w:150,h:60, c:"--lake",  ic:"✨", nm:"정산 계산",     tech:"Spark 배치"},
+  {id:"payout",  flow:true, x:410, y:380, w:152,h:60, c:"--payout",ic:"💰", nm:"파트너 정산",   tech:"집계 → 지급 명세"},
+  {id:"serving", flow:true, x:610, y:380, w:160,h:60, c:"--srv",   ic:"🔌", nm:"정산 조회 서빙", tech:"servedb → REST (:8091)"},
+  // 지원 인프라 (단계 없음 · 클릭하면 상세 카드)
+  {id:"apicurio",flow:false,x:772, y:40,  w:172,h:60, c:"--kafka", ic:"📜", nm:"Apicurio 레지스트리", tech:"Avro 스키마 계약·진화 검증"},
+  {id:"nessie",  flow:false,x:232, y:238, w:200,h:58, c:"--lake",  ic:"🗂️", nm:"Nessie 카탈로그", tech:"어떤 파일이 최신인가 (원자 커밋)"},
+  {id:"minio",   flow:false,x:474, y:238, w:200,h:58, c:"--lake",  ic:"🪣", nm:"MinIO (S3)",     tech:"파일의 실제 바이트 저장"},
+  {id:"dlt",     flow:false,x:392, y:138, w:152,h:42, c:"--kafka", ic:"⚠️", nm:"DLT",          tech:"실패 메시지 격리"},
+  {id:"airflow", flow:false,x:16,  y:380, w:150,h:60, c:"--lake",  ic:"🗓️", nm:"Airflow",      tech:"일 마감 DAG 오케스트레이션"},
+  {id:"obs",     flow:false,x:850, y:380, w:170,h:60, c:"--obs",   ic:"📈", nm:"Prometheus·Grafana", tech:"실시간 관측"},
+];
+
+const LINKS=[
+  {id:"pg_dbz",        d:"M168,70 L200,70"},
+  {id:"dbz_kafka",     d:"M356,70 L388,70"},
+  {id:"kafka_consumer",d:"M544,70 L576,70"},
+  {id:"consumer_lake", d:"M656,100 L656,180 L574,180 L574,205"},
+  {id:"consumer_reg",  d:"M732,70 L768,70",dash:true},
+  {id:"nessie_minio",  d:"M432,267 L470,267"},
+  {id:"lake_spark",    d:"M285,323 L285,376"},
+  {id:"spark_payout",  d:"M360,410 L406,410"},
+  {id:"payout_serving",d:"M562,410 L606,410"},
+  {id:"kafka_dlt",     d:"M468,100 L468,136",dash:true},
+  {id:"airflow_orch",  d:"M166,410 L206,410",dash:true},
+  {id:"obs_watch",     d:"M935,380 L935,120",dash:true},
+];
+
+const S=[
+{node:"pg", support:[], conns:[],
+ t:"주문·결제 발생", w:"Postgres · OLTP (paydb · orderdb)",
+ h:"고객이 파트너 상품을 주문·결제 → 결제/주문 DB에 기록",
+ d:"고객이 <b>주문 64823</b>으로 파트너 7의 상품 3개(합 10만원)를 <b>카드 7만 + 포인트 3만</b> 복합결제. 결제(paydb)와 주문(orderdb)은 <b>분리된 OLTP</b>에 INSERT되고, 결제는 헤더 + 수단별 원장으로 나뉩니다. 물리 FK 없이 논리 참조(무결성은 뒤의 대사가 검증).",
+ x:`<div class="datalabel">orderdb.order_item (3행)</div><table>
+<tr><th>order_no</th><th>line_no</th><th>partner_id</th><th>brand</th><th>item_amount</th></tr>
+<tr><td>64823</td><td>1</td><td>7</td><td>1</td><td>50,000</td></tr>
+<tr><td>64823</td><td>2</td><td>7</td><td>1</td><td>30,000</td></tr>
+<tr><td>64823</td><td>3</td><td>7</td><td>1</td><td>20,000</td></tr></table>
+<div class="datalabel">paydb.payment (헤더) + 수단별 원장</div><table>
+<tr><th>테이블</th><th>키</th><th>amount</th><th>비고</th></tr>
+<tr><td>payment</td><td>txn 100064823</td><td>100,000</td><td>type=1(승인)</td></tr>
+<tr><td>payment_card</td><td>pm 90001 · mid 1001</td><td>70,000</td><td>주결제</td></tr>
+<tr><td>payment_point</td><td>pm 90002</td><td>30,000</td><td>보조(수수료 0)</td></tr></table>`},
+
+{node:"dbz", support:["apicurio"], conns:["pg_dbz"],
+ t:"변경 캡처 (CDC)", w:"Debezium (Kafka Connect) · Avro 발행",
+ h:"결제/주문 DB의 변경을 실시간으로 포착해 스키마 계약과 함께 발행",
+ d:"<b>wal_level=logical</b> WAL을 구독해, 변경 1건마다 <b>{before, after, op, source}</b> 봉투를 만듭니다. <b>메시지 key = PK</b>(파티셔닝 기준). 각 변경엔 <b>source.lsn</b>(DB 전역 단조)이 붙어 '무엇이 최신인가'의 유일한 기준이 됩니다. 값은 <b>Avro로 직렬화</b>되고 스키마는 <b>레지스트리에 계약</b>으로 등록 — 소스 테이블이 바뀌면 스키마 버전이 올라가고, 파괴적 변경은 발행 시점에 걸러낼 수 있습니다.",
+ x:`<div class="datalabel">Debezium 이벤트 (order_item 라인1 — Avro, 표기는 해석본)</div><pre>{
+  <span class="k">"before"</span>: <span class="n">null</span>,                    <span class="c">// INSERT라 이전값 없음</span>
+  <span class="k">"after"</span>: {
+    <span class="k">"order_no"</span>: <span class="n">64823</span>, <span class="k">"line_no"</span>: <span class="n">1</span>,
+    <span class="k">"partner_id"</span>: <span class="n">7</span>, <span class="k">"brand"</span>: <span class="n">1</span>, <span class="k">"item_amount"</span>: <span class="n">50000</span>
+  },
+  <span class="k">"op"</span>: <span class="s">"c"</span>,                         <span class="c">// c=생성 u=수정 d=삭제</span>
+  <span class="k">"source"</span>: { <span class="k">"lsn"</span>: <span class="hl">171139502</span>, ... } <span class="c">// ★ 최신 판별 기준(_seq)</span>
+}</pre>
+<div class="datalabel">직렬화 — 와이어 포맷 (P8)</div><pre><span class="c">// [0x00][스키마 글로벌ID][Avro 바이너리] — JSON 텍스트가 아님</span>
+<span class="c">// 스키마는 order.public.order_item-value 아티팩트로 레지스트리에 버전 관리</span></pre>`},
+
+{node:"kafka", support:["dlt","obs"], conns:["dbz_kafka","kafka_dlt","obs_watch"],
+ t:"이벤트 스트리밍", w:"Kafka",
+ h:"변경 이벤트를 안정적으로 버퍼링·전달",
+ d:"테이블별 토픽 × 파티션. 프로듀서가 <b>hash(key) % N</b>으로 파티션을 정해 <b>같은 주문은 항상 같은 파티션</b>(그 주문의 순서 보장), 다른 주문은 흩어져 병렬 처리의 기반이 됩니다. 처리 불가능한 <b>포이즌 메시지는 DLT로 격리</b>해 흐름을 막지 않고 유실도 없습니다(라이브 검증).",
+ x:`<pre>hash({"order_no":64823,"line_no":1}) % 4  =  <span class="hl">1</span>
+
+토픽 order.public.order_item
+  p0 [ ... ]
+  p1 [ ..., <span class="hl">64823/1 @ offset 74211</span> ]   ← 여기 적재
+  p2 [ ... ]
+  p3 [ ... ]
+
+<span class="c">// payment·수단별 원장·order_item·cancel = 테이블별 토픽으로 분산</span></pre>
+<div class="datalabel">실패 메시지 — 2중 방어선</div><pre><span class="c">// ①Avro 아님(역직렬화 실패) ②봉투 위반(파싱 실패) → &lt;topic&gt;.DLT 격리 (유실 방지)</span></pre>`},
+
+{node:"consumer", support:["obs","apicurio"], conns:["kafka_consumer","consumer_reg","obs_watch"],
+ t:"정규화 (변환)", w:"싱크 컨슈머 normalize (Spring Boot · 8스레드)",
+ h:"원장을 정산용 표준 형태(canonical)로 변환",
+ d:"8스레드가 파티션을 나눠 병렬 소비. <b>레지스트리에서 스키마를 받아 Avro를 역직렬화</b>하고, 봉투를 벗겨 <b>정산에 필요한 컬럼만</b> 남기고, card/money/point/coupon <b>4원장을 단일 payment_method</b>(method 1~4)로 통합합니다. 각 레코드에 <b>_op</b>(c/u/d)와 <b>_seq = source.lsn</b>을 붙여 두는데 — 이게 다음 단계 <b>멱등</b>의 열쇠입니다.",
+ x:`<div class="datalabel">변환: payment_card 이벤트 → canonical payment_method</div><pre><span class="c">// in (pay.public.payment_card 토픽 · Avro GenericRecord)</span>
+{ after: { pm_id:90001, txn_id:100064823, payments_mid:1001, amount:70000, ... } }
+
+<span class="c">// out — canonical (method=1 로 통합 표기, _op·_seq 부착)</span>
+{ <span class="k">_op</span>:<span class="s">"c"</span>, <span class="k">_seq</span>:<span class="hl">171139480</span>, table:<span class="s">"payment_method"</span>,
+  data: { pm_id:<span class="n">90001</span>, txn_id:<span class="n">100064823</span>, order_no:<span class="n">64823</span>,
+          <span class="hl">method:1</span>, payments_mid:<span class="n">1001</span>, amount:<span class="n">70000</span>, type:<span class="n">1</span> } }
+
+<span class="c">// point 원장 → method:3, mid=null (보조수단)</span></pre>
+<div class="datalabel">스키마 진화 (실증)</div><pre><span class="c">// 소스에 ADD COLUMN → 스키마 v2 자동 등록 → 이 컨슈머는 코드 무수정으로 계속 처리</span></pre>`},
+
+{node:"lake", support:["lake"], conns:["consumer_lake","nessie_minio"],
+ t:"레이크하우스 저장 (멱등)", w:"MinIO(S3)에 저장 · Nessie 카탈로그 커밋",
+ h:"append로만 저장하고, 읽을 때 최신본만 골라 멱등을 보장",
+ d:"canonical 레코드를 <b>MinIO(S3)에 파일로 append</b>하고 <b>Nessie가 커밋</b>으로 버전을 확정합니다. 핵심: 저장 시점엔 중복·수정·삭제를 <b>덮어쓰지 않고 계속 쌓기만</b> 합니다(무상태·락 없음). 정리는 <b>읽는 쪽</b>이 담당 — key별 <b>_seq(LSN) 최댓값 1건 & _op≠'d'</b>. 그래서 이벤트가 <b>중복되거나·순서가 뒤섞이거나·재처리돼도 결과가 항상 같습니다 → 순서무관 멱등</b>.",
+ x:`<div class="datalabel">저장 (append-only) — 같은 키가 여러 번 도착해도 그냥 쌓음</div><table>
+<tr><th>_op</th><th>_seq (LSN)</th><th>order_no / line_no</th><th>item_amount</th><th>비고</th></tr>
+<tr><td>c</td><td>171139502</td><td>64823 / 1</td><td>50,000</td><td>최초</td></tr>
+<tr><td>c</td><td>171139502</td><td>64823 / 1</td><td>50,000</td><td class="hl2">재처리 중복</td></tr>
+<tr><td>c</td><td>171140880</td><td>64823 / 1</td><td>50,000</td><td class="hl2">장애 복구로 또</td></tr></table>
+<div class="datalabel">읽기 시점 dedup — 최신 1건만</div><pre>ROW_NUMBER() OVER (PARTITION BY order_no, line_no
+                   ORDER BY <span class="hl">_seq DESC</span>) = 1   AND   _op <> 'd'
+
+→ 64823 / 1  =  <span class="hl">50,000</span>  (한 건)   <span class="c">// 중복·순서와 무관하게 동일 결과</span></pre>
+<div class="datalabel">삭제도 '데이터' — 마지막이 _op='d' 면 그 키는 빠짐</div><pre><span class="c">// 취소/삭제 이벤트(op=d)가 최신(_seq 최대)이면 dedup 결과에서 제외 → 삭제 전파</span></pre>
+<div class="note"><b>왜 이렇게?</b> 저장을 무상태 append로 두면 컨슈머끼리 조율할 필요가 없어 <b>병렬·재시작·장애에 안전</b>. 정확성(중복 제거·삭제 반영)은 읽기 한 번으로 해결 = <b>멱등</b>. LSN(_seq)이 전역 단조라, 여러 토픽에서 온 이벤트도 최신 판별이 흔들리지 않습니다.</div>`},
+
+{node:"spark", support:["lake","airflow"], conns:["lake_spark","nessie_minio","airflow_orch"],
+ t:"정산 계산", w:"Spark 배치 (Airflow DAG가 실행)",
+ h:"결제금액을 상품/파트너/수단별로 배분하고 수수료를 확정",
+ d:"<b>Airflow의 일 마감 DAG</b>가 레이크 적재→정산→검증 체인을 순서대로 실행합니다(실패 시 재시도, 실패한 단계 하류는 자동 차단). 정산은 ① 결제 10만원을 <b>상품가 비율로 라인 배분</b> ② 각 라인을 <b>카드 70% : 포인트 30%로 수단별 교차배분</b> ③ 정산일 기준 <b>as-of 수수료를 박제(FREEZE)</b> — 이후 요율이 바뀌어도 이 건은 불변. 잔액 보정으로 1원도 새지 않습니다.",
+ x:`<div class="datalabel">settlement_event (라인1의 2행 — 라인×수단)</div><table>
+<tr><th>event_id</th><th>method</th><th>alloc</th><th>fee_rate</th><th>fee</th><th>net</th></tr>
+<tr><td>1:100064823:1:1</td><td>1(카드)</td><td>35,000</td><td class="hl2">0.023</td><td>805</td><td>34,195</td></tr>
+<tr><td>1:100064823:1:3</td><td>3(포인트)</td><td>15,000</td><td>0.000</td><td>0</td><td>15,000</td></tr></table>
+<pre><span class="c">// 라인1 5만 = 카드 50000×70000/100000=35000 + 포인트 15000
+// 라인2 3만 = 21000+9000 · 라인3 2만 = 14000+6000  (합 = 정확히 10만)
+// 수수료(FREEZE): 카드 2.3%(2026-06-01부터) · 포인트 0%</span></pre>`},
+
+{node:"payout", support:["lake","airflow"], conns:["spark_payout","nessie_minio","airflow_orch"],
+ t:"파트너 정산·대사", w:"집계(settlement_agg) → 지급 명세",
+ h:"파트너별로 합산해 지급액을 확정하고 돈 보존을 대사",
+ d:"라인×수단 명세를 <b>일 × 파트너 × 브랜드 × 수단</b>으로 집계해 파트너 7의 <b>지급액(payout = gross − fee)</b>을 확정합니다. 지급 전 <b>대사</b>로 돈 보존을 확인 — 원천 결제총액 = 정산 gross(diff 0), 카드 MID별 = PG 파일(diff 0).",
+ x:`<div class="datalabel">settlement_agg (일×파트너×브랜드×수단) — 파트너 7</div><table>
+<tr><th>date</th><th>partner</th><th>method</th><th>gross</th><th>fee</th><th>payout</th></tr>
+<tr><td>2026-06-10</td><td>7</td><td>1(카드)</td><td>70,000</td><td>1,610</td><td>68,390</td></tr>
+<tr><td>2026-06-10</td><td>7</td><td>3(포인트)</td><td>30,000</td><td>0</td><td>30,000</td></tr></table>
+<div class="datalabel">지급 대사 (돈 보존 · 실측)</div><pre>recon_result (결제총액 = 정산 gross):  diff = <span class="hl">0</span>   ✓
+recon_card   (카드 MID별 = PG 파일):   diff = <span class="hl">0</span>   ✓
+
+<span class="hl">→ 파트너 7 지급 확정: 98,390원</span> (카드 68,390 + 포인트 30,000)</pre>`},
+
+{node:"serving", support:["airflow"], conns:["payout_serving","airflow_orch"],
+ t:"정산 조회 서빙", w:"servedb(Postgres) → 서빙 API (Spring Boot · JPA)",
+ h:"확정된 정산을 파트너/재무가 조회하는 출력 창구",
+ d:"DAG의 마지막 태스크가 정산 산출을 <b>servedb에 TRUNCATE+COPY로 재적재</b>(멱등·건수 자체검증)하고, <b>read-only JPA API</b>가 이를 서빙합니다. 조회는 배치와 분리된 스토어에서 — 배치 재작성과 충돌하지 않습니다. 전 엔드포인트 <b>API 키 인증</b>, 입력 검증, 오류 응답에 내부 정보를 싣지 않습니다.",
+ x:`<div class="datalabel">GET /api/v1/settlements/2026-06-10/partners/7  (X-API-Key 필수)</div><pre>[
+  { <span class="k">"method"</span>: <span class="n">1</span>, <span class="k">"methodName"</span>: <span class="s">"CARD"</span>,
+    <span class="k">"gross"</span>: <span class="n">70000</span>, <span class="k">"fee"</span>: <span class="n">1610</span>, <span class="k">"payout"</span>: <span class="hl">68390</span> },
+  { <span class="k">"method"</span>: <span class="n">3</span>, <span class="k">"methodName"</span>: <span class="s">"POINT"</span>,
+    <span class="k">"gross"</span>: <span class="n">30000</span>, <span class="k">"fee"</span>: <span class="n">0</span>, <span class="k">"payout"</span>: <span class="hl">30000</span> }
+]</pre>
+<div class="datalabel">인증 실패</div><pre>GET (키 없음/오류)  →  <span class="hl">401</span> {"error":"unauthorized"}   <span class="c">// 내부 정보 미노출</span></pre>
+<div class="note">이 전 과정이 <b>순서무관 멱등</b>(_seq dedup) 위에 서 있어 — 컨슈머가 죽어도, 재처리해도, 병렬로 섞여도 파트너에게 서빙되는 최종 정산액은 항상 같습니다.</div>`}
+];
+
+/* ── 뷰② 렌더링·재생 (원 data-flow.html 로직) ── */
+const board=document.getElementById('board'), packet=document.getElementById('packet');
+const view=document.getElementById('view'), prog=document.getElementById('prog');
+const boardwrap=document.getElementById('boardwrap'), svg=document.getElementById('links');
+const lakebox=document.getElementById('lakebox');
+const nodeEls={}; const linkEls={};
+
+LINKS.forEach(l=>{
+  const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+  p.setAttribute('d',l.d);
+  p.setAttribute('class','link'+(l.dash?' dash':''));
+  p.setAttribute('marker-end','url(#arw)');
+  svg.appendChild(p); linkEls[l.id]=p; p._dash=!!l.dash;
+});
+let flowN=0;
+NODES.forEach(n=>{
+  if(n.box){
+    flowN++; n._step=flowN-1;
+    nodeEls[n.id]=lakebox;
+    const idx=S.findIndex(s=>s.node===n.id);
+    lakebox.onclick=()=>{ pause(); go(idx); };
+    lakebox.insertAdjacentHTML('afterbegin', `<div class="stepno">${flowN}</div>`);
+    return;
+  }
+  const el=document.createElement('div');
+  el.className='pnode'+(n.flow?'':' sup');
+  el.dataset.id=n.id;
+  el.style.left=n.x+'px'; el.style.top=n.y+'px';
+  el.style.width=n.w+'px'; el.style.height=n.h+'px';
+  el.style.borderTopColor='var('+n.c+')';
+  if(!n.flow) el.style.color='var('+n.c+')';
+  let step='';
+  if(n.flow){ flowN++; const si=flowN; step=`<div class="stepno">${si}</div>`; n._step=si-1; }
+  el.innerHTML=`${step}<div class="hd"><span class="ic">${n.ic}</span><span class="nm">${n.nm}</span></div><div class="tech">${n.tech}</div>`;
+  if(n.flow){ const idx=S.findIndex(s=>s.node===n.id); el.onclick=()=>{ pause(); go(idx); }; }
+  else { el.onclick=()=>{ pause(); showInfra(n.id); }; }
+  board.appendChild(el); nodeEls[n.id]=el;
+});
+
+/* 지원 인프라 상세 카드 */
+const INFRA={
+ apicurio:{t:"Apicurio — Avro 스키마 레지스트리 (P8)", r:"메시지의 구조를 '계약'으로 관리 — 진화는 통과, 파괴는 차단", d:{
+  "무슨 역할":"토픽별 스키마를 버전 관리. 프로듀서(Debezium)가 새 스키마를 등록하고, 컨슈머는 글로벌 ID로 스키마를 받아 역직렬화.",
+  "진화 실증":"소스 ADD COLUMN → v2 자동 등록 → <b>코드 무수정 컨슈머가 무중단 처리</b>. BACKWARD 규칙 하 비호환 변경은 <b>409 거부</b>.",
+  "저장":"kafkasql — 스키마가 Kafka 토픽에 저장돼 kafka-data 볼륨으로 영속",
+  "주소":"localhost:8085"}},
+ nessie:{t:"Nessie — Iceberg REST 카탈로그", r:"테이블의 '현재 상태'를 추적하고 원자적으로 커밋 — 데이터의 Git", d:{
+  "무슨 역할":"어떤 데이터 파일들이 <b>지금 테이블의 진짜 내용</b>인지(스냅샷)를 가리키는 포인터를 관리. 커밋 단위로 원자 교체.",
+  "왜 MinIO와 분리?":"MinIO는 '바이트'만 담당. <b>'지금 유효한 버전'을 정하는 주체가 카탈로그</b>. 이게 있어야 append·타임트래블이 가능.",
+  "주소":"localhost:19120"}},
+ minio:{t:"MinIO — S3 오브젝트 스토리지", r:"Parquet·Iceberg 파일의 실제 바이트를 보관", d:{
+  "무슨 역할":"데이터 파일(<b>.parquet</b>)과 메타데이터(<b>.json</b>)를 오브젝트로 저장. Nessie가 가리키는 <b>실체</b>.",
+  "왜 Nessie와 분리?":"관심사 분리 — 덕분에 <b>클라우드 AWS S3로 그대로 대체</b> 가능.",
+  "콘솔":"localhost:9001"}},
+ dlt:{t:"DLT — Dead Letter Topic", r:"처리 실패 메시지 격리 (유실 방지)", d:{
+  "2중 방어선":"①역직렬화 실패(poison) = ErrorHandlingDeserializer ②파싱 실패 = 즉시 DLQ / 일시 오류 = 재시도 후 DLQ",
+  "라이브 검증":"쓰레기 바이트 주입 → DLT 격리·루프 없음·컨슈머 생존·랜딩 무오염 (KAFKA-CONSUMER.md §10)",
+  "토픽":"&lt;topic&gt;.DLT"}},
+ airflow:{t:"Airflow — 일 마감 오케스트레이션 (P9)", r:"배치 체인을 DAG로 — 스케줄·의존·재시도·이력", d:{
+  "DAG":"settlement_close: 랜딩→MinIO → Iceberg → 정산·대사 → 서빙 적재 (4태스크 직렬)",
+  "실증":"4태스크 success·산출 체크섬 정답지 동일 / 실패 시 재시도 1회 → 하류 자동 차단(upstream_failed)",
+  "주소":"localhost:8087"}},
+ obs:{t:"Prometheus + Grafana — 관측", r:"파이프라인 상태를 실시간 모니터링", d:{
+  "Prometheus":"kafka-exporter(:9308) + 컨슈머 actuator(:8090)를 5초마다 스크랩",
+  "Grafana":"통합 대시보드 — LAG·소비율·랜딩 적재율·스레드별 파티션 배정·DLQ 격리",
+  "주소":"Grafana localhost:3000"}}
+};
+function showInfra(id){
+  const it=INFRA[id]; if(!it) return;
+  document.querySelectorAll('.pnode').forEach(x=>x.classList.remove('active'));
+  nodeEls[id].classList.add('active');
+  let h=`<h2>🔧 ${it.t}</h2><div class="where">지원 인프라 · 흐름 단계와 별개</div>
+    <div class="does">⚙ ${it.r}</div><dl style="font-size:12.5px;line-height:1.65">`;
+  for(const[k,v] of Object.entries(it.d)) h+=`<dt style="color:#9db4de;font-weight:700;margin-top:10px;font-size:11.5px">${k}</dt><dd>${v}</dd>`;
+  view.innerHTML=h+`</dl><div class="note">단계 흐름으로 돌아가려면 번호 노드를 클릭하거나 ◀ ▶ / 재생을 누르세요.</div>`;
+}
+
+let cur=-1, playing=false, timer=null, speed=1;
+
+function positionPacket(){
+  const el=nodeEls[S[cur].node];
+  packet.style.left=(el.offsetLeft+el.offsetWidth/2)+'px';
+  packet.style.top =(el.offsetTop +el.offsetHeight/2)+'px';
+}
+function go(i){
+  if(i<0||i>=S.length) return;
+  const hop=i!==cur; cur=i;
+  const s=S[i];
+  NODES.forEach(n=>{
+    const el=nodeEls[n.id];
+    if(n.flow){
+      el.classList.toggle('active', n.id===s.node);
+      el.classList.toggle('passed', n._step<i);
+    }else{
+      const lake=(n.id==='nessie'||n.id==='minio') && s.support.includes('lake');
+      el.classList.toggle('on', s.support.includes(n.id) || lake);
+    }
+  });
+  lakebox.classList.toggle('on', s.support.includes('lake'));
+  Object.entries(linkEls).forEach(([id,p])=>{
+    const on=s.conns.includes(id);
+    p.setAttribute('class','link'+(p._dash?' dash':'')+(on?' flow'+(p._dash?' dashflow':''):''));
+    p.setAttribute('marker-end', on?'url(#arwf)':'url(#arw)');
+  });
+  positionPacket();
+  if(hop){ packet.classList.remove('hop'); void packet.offsetWidth; packet.classList.add('hop'); }
+  const el=nodeEls[s.node];
+  boardwrap.scrollTo({left: el.offsetLeft - boardwrap.clientWidth/2 + el.offsetWidth/2, behavior:'smooth'});
+  view.innerHTML=`<h2>${i+1}. ${s.t}</h2><div class="where">${s.w}</div>
+    <div class="does">⚙ ${s.h}</div>
+    <div class="desc">${s.d}</div>${s.x}`;
+  prog.textContent=`${i+1} / ${S.length}`;
+}
+
+const playBtn=document.getElementById('playBtn');
+function scheduleNext(){
+  timer=setTimeout(()=>{
+    if(cur<S.length-1){ go(cur+1); scheduleNext(); } else pause();
+  }, 2800*speed);
+}
+function play(){
+  if(cur>=S.length-1) go(0);
+  playing=true; playBtn.textContent='⏸ 일시정지'; playBtn.classList.add('on'); scheduleNext();
+}
+function pause(){
+  playing=false; playBtn.textContent='▶ 재생'; playBtn.classList.remove('on'); clearTimeout(timer);
+}
+playBtn.onclick=()=> playing?pause():play();
+document.getElementById('resetBtn').onclick=()=>{ pause(); go(0); };
+document.getElementById('prevBtn').onclick=()=>{ pause(); if(cur>0) go(cur-1); };
+document.getElementById('nextBtn').onclick=()=>{ pause(); if(cur<S.length-1) go(cur+1); };
+document.querySelectorAll('.sp').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.sp').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); speed=parseFloat(b.dataset.sp);
+  if(playing){ clearTimeout(timer); scheduleNext(); }
+});
+document.addEventListener('keydown',e=>{
+  if(activeView!=='view-flow') return;   // 흐름 뷰에서만 키 제어
+  if(e.key==='ArrowRight'){ pause(); if(cur<S.length-1) go(cur+1); }
+  if(e.key==='ArrowLeft'){ pause(); if(cur>0) go(cur-1); }
+  if(e.key===' '){ e.preventDefault(); playing?pause():play(); }
+});
+window.addEventListener('resize', ()=>{ if(cur>=0) positionPacket(); });
+
+go(0);
+</script>
+</body>
+</html>

@@ -21,8 +21,7 @@
 
 ## ⭐ 즉시 다음 액션
 
-1. `docs/data-flow.html` 레이크 단계 분리 WIP — 렌더 확인 후 커밋만 남음
-2. 다이어그램 2종(`system-architecture.html`·`aws-architecture.html`) — v1 상태, 재작성 필요
+1. ~~다이어그램 HTML 정리~~ ✅ 완료(2026-09-03): 4종 → `docs/pipeline.html` 1개로 통합(아키텍처/데이터흐름 탭, 노드 정의 단일화, Phase 8~10 반영). v1 유물 2종 삭제
 3. ~~학습 후보(엔드피처): Phase 8 Avro/SchemaReg → 9 Airflow → 10 서빙 API~~ **전부 완료(2026-09-01)** — 로드맵 완주
 4. 미결 소항목: Phase 5 병목 국소화 측정, DLQ retryable 경로 라이브 검증, dbt settlement_event incremental화
 
@@ -60,8 +59,8 @@
 
 - `transform/01_schema.sql` `generator/02_seed.sql` `transform/03_settlement.sql` `transform/04_checks.sql` = **v3** (현행)
 - `scripts/run-step1.sh` `q.sh` `duckdb-shell.sh` `infra/duckdb/Dockerfile`
-- 다이어그램: `architecture.html`(✅ 2026-07-02 인터랙티브 현행화) · `data-flow.html`(✅ 신규 — 단계별 실데이터 예시) · `system-architecture.html` `aws-architecture.html`(※ 여전히 v1 — 재작성 필요)
-- 문서: `DESIGN.md SCHEMA.md DATA-LAYOUT.md DOMAIN-NOTES.md ROADMAP.md ENVIRONMENT.md` (v3 동기화 완료) · `ERD.md`(소스 Postgres + canonical DuckDB, Mermaid — 2026-06-12) · `KAFKA-CONSUMER.md`(파티션·스레드·리밸런스 트리거/타이밍·배분전략(assignor)·장애복구·dedup — 2026-06-18)
+- 다이어그램: **`pipeline.html`** (2026-09-03 — 구 architecture/data-flow/system-architecture/aws-architecture 4종을 탭 전환 1파일로 통합, Phase 8~10 반영)
+- 문서: `DESIGN.md SCHEMA.md DATA-LAYOUT.md DOMAIN-NOTES.md ROADMAP.md` (v3 동기화 완료) · `CDC.md`(캡처·발행 측 해설 — 2026-09-07) · `RUNBOOK.md`(구동·복구 — 2026-09-07, 구 ENVIRONMENT.md 대체) · `ERD.md`(소스 Postgres + canonical DuckDB, Mermaid — 2026-06-12) · `KAFKA-CONSUMER.md`(파티션·스레드·리밸런스 트리거/타이밍·배분전략(assignor)·장애복구·dedup — 2026-06-18)
   ※ 주의: SCHEMA.md의 소스 테이블 기술은 DuckDB canonical 기준 — **Postgres 소스의 현실형 구조(수단별 4원장)는 ERD.md·infra/postgres/init.sql이 정본**
 
 ## 알려진 이슈/주의
@@ -89,7 +88,7 @@
 - **2-5 E2E ✅ 완료(2026-06-17) — 2단계 전체 완료**: 1단계 canonical→Postgres 현실형 적재(`scripts/e2e-load-postgres.sh`, payment_method 4원장 분리)→CDC→Kafka(58만건)→컨슈머→랜딩→읽기 dedup으로 canonical 재구성(`transform/e2e_load.sql`)→03 정산(`scripts/run-e2e.sh`)→`data/e2e.duckdb`.
   - ★ 증명: **5종 체크섬(payment·payment_method·order_item·cancel·settlement_agg) 전부 1단계와 비트 동일.** 고아 0, 돈보존·MID대사 diff=0. → 파이프라인 무손실·무변형 운반 증명.
   - 검증 방법 문서: `docs/VERIFICATION.md` (단계별 테스트 케이스·근거).
-- 실행: `cd infra && docker compose up -d postgres` (kafka 등은 단계별로)
+- 실행·복구 절차: `docs/RUNBOOK.md` (콜드스타트 타임라인·확인 체크·복구 시나리오)
 
 ## 3단계 진행 상황 (레이크 + 증분 멱등)
 
@@ -183,6 +182,6 @@
 
 1. ~~본 DB에 v3 반영 + 멱등 재확인~~ ✅ 완료 + 재현성까지 해결(2026-06-11)
 2. 텍스트 문서 v3 동기화 ✅ 완료(2026-06-11): SCHEMA·DATA-LAYOUT·DOMAIN-NOTES·ROADMAP·DESIGN·ENVIRONMENT
-   - architecture.html ✅ 재작성(2026-07-02) · ⬜ 남음: **다이어그램 HTML 2종**(system-architecture/aws-architecture) — v1 기준, 재작성 필요
+   - 다이어그램 ✅ 완결(2026-09-03): 4종 → pipeline.html 통합
 3. (옵션) 결제수단별 차등수수료를 partner×method 2차원으로 확장 / 환불 대사(정산 밖이라 보류)
 4. ~~2단계: 실시간 수집~~ ✅ 완료(2026-06-17) — 이후 진행 상황은 위 "2단계~" 섹션들 참조
