@@ -19,11 +19,23 @@
 - 실행: `bash scripts/run-step1.sh` (01→02→03→04 SQL 파이프 → `data/settlement.duckdb`)
 - 조회: `bash scripts/q.sh "SQL"` / 대화형 `bash scripts/duckdb-shell.sh`
 
-## ⭐ 즉시 다음 액션
+## ⭐ 미결 백로그 (2026-10-07 기준 — 계획·제안됐으나 미실행)
 
-1. ~~다이어그램 HTML 정리~~ ✅ 완료(2026-09-03): 4종 → `docs/pipeline.html` 1개로 통합(아키텍처/데이터흐름 탭, 노드 정의 단일화, Phase 8~10 반영). v1 유물 2종 삭제
-3. ~~학습 후보(엔드피처): Phase 8 Avro/SchemaReg → 9 Airflow → 10 서빙 API~~ **전부 완료(2026-09-01)** — 로드맵 완주
-4. 미결 소항목: Phase 5 병목 국소화 측정, DLQ retryable 경로 라이브 검증, dbt settlement_event incremental화
+> 로드맵(Phase 0~10)·보안 하드닝·문서 체계는 전부 완료돼 main 반영됨. 남은 것은 아래뿐.
+
+**문서 정리 (권고 단계에서 대기)**
+1. `SCHEMA.md` + `DATA-LAYOUT.md` 통합 — 같은 테이블 10여 개를 두 문서가 이중 기술(드리프트 원천). 승인 대기
+2. `DESIGN.md` §1~2(ASCII 아키텍처·플로우)를 `pipeline.html` 포인터로 교체 — 다이어그램 중복 제거의 잔여분
+3. `PRODUCTION-CHECKLIST.md` §8 보강 — 2026-10-01 개인정보 논의 반영: 사본 7벌 지도(PG→WAL→Kafka→랜딩→레이크→스냅샷→servedb), 시간/사건 삭제 이원화(기한 파기=정책 동기화, 탈퇴·정정=이벤트 전파), 토큰화·crypto-shredding, 스냅샷 expire. 현 파이프라인은 회원 무관 grain+projection으로 면역임도 명기
+
+**확인·정리 (git 무관)**
+4. `docs/pipeline.html` 렌더 확인 (브라우저 — 탭 2개 동작) — 아직 미확인
+5. 로컬 산출물 삭제: `data/landing.pre-avro/`(Avro 검증 끝난 백업), 옛 세션 로그(`data/consumer-*.log` 등)
+
+**탐구 후보 (착수한 적 없음 — 하고 싶을 때)**
+6. Phase 5 진짜 병목 국소화 측정 (①데이터 10배 ②읽기만 vs 적재 ③스레드별 처리량 — 측정 전 단정 금지 원칙)
+7. DLQ retryable(일시 오류→재시도→DLQ) 경로 라이브 검증 — 현재 설정만 검증됨
+8. dbt `settlement_event`를 incremental materialized로 (3-4 watermark의 dbt판)
 
 ### 멱등성 vs 재현성 (이번에 정리)
 - **멱등성**(원장 고정, 정산만 재실행 → 동일) = ✅. `03_settlement.sql`만 재실행 시 agg/event 체크섬 비트 동일. ※ run-step1.sh는 원장까지 새로 만드니 멱등성 검증용 아님.
