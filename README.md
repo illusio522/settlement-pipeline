@@ -1,53 +1,51 @@
 # settlement-pipeline
 
-대규모 파트너 정산 파이프라인 — 로컬 학습/검증용 구현.
+파일 기반 일 마감 정산 파이프라인. 결제·주문 데이터를 Parquet로 고정하고, DuckDB·dbt로 복합결제·부분취소 정산을 계산한 뒤 정합성 검사를 통과한 결과만 PostgreSQL에 게시한다.
 
-브랜드별(몰A·몰B) 결제 데이터를 **CDC → 로그 → 레이크 → 증분 배치 → 정산/대사 → 마감**으로
-처리하는 파이프라인을, 운영 설계는 확장 가능하게 / 로컬 테스트는 작게 검증한다.
+```text
+PostgreSQL 결제·주문
+  → Parquet + manifest
+  → DuckDB / dbt
+  → 입력·금액 정합성 검사
+  → 날짜별 원자 게시
+  → Spring Boot 조회 API
+```
 
-## 4대 목표
-고성능 · 저비용 · 빠른 처리속도 · 유지보수
-핵심 레버: `증분 · 컬럼나 · 멱등 · 버스트컴퓨트 · 선언적/표준`
+## 브랜치
 
-## 스택 (린 — right-sized)
-| 역할 | 기술 |
+| 브랜치 | 용도 |
 |---|---|
-| 소스 DB (+Outbox) | PostgreSQL |
-| CDC | Debezium |
-| 로그/버퍼 | Redpanda (Kafka 호환) |
-| 오브젝트스토리지 | MinIO (S3 호환) |
-| 레이크 포맷 | Iceberg / Parquet |
-| 집계 | dbt + DuckDB (증분) |
-| 대사 | 컨트롤 토탈 스크립트 |
-| 오케스트레이션 | (후순위) cron → Airflow |
+| `main` | 전환 전 기준점 |
+| `archive/cdc-lakehouse` | 기존 CDC·Kafka·레이크하우스 구현과 당시 문서 보존 |
+| `feat/file-batch` | 파일 배치 기본 경로, 멱등 실행·검증 게이트·두 경로 동등성 검증 |
 
-> Spark·대형 Kafka는 이 규모엔 과설계 → 도입 안 함. 확장 시 엔진만 교체.
+기존 `normalize/`, `transform/`, `dbt/`, CDC 인프라는 확장 및 회귀 비교용으로 유지했다. 파일 배치 실행에는 Kafka·Debezium·MinIO·Spark가 필요하지 않다. 실제 CDC와의 수집 구간 비교를 실행할 때만 별도 검증 스택을 사용한다.
 
-## 디렉터리
+## 문서와 진입점
 
-| 경로 | 용도 |
+- [파일 배치 실행·복구·동등성 검증](docs/FILE-BATCH.md)
+- [실행한 테스트와 결과 비교 기록](docs/FILE-BATCH-VERIFICATION.md)
+- [포트폴리오](docs/portfolio.md)
+- [설계 기준](docs/FILE-BATCH-DESIGN.md)
+- [기존 CDC 실행 가이드](docs/RUNBOOK.md)
+- [기존 성능 실험](docs/BENCHMARK.md)
+
+| 경로 | 역할 |
 |---|---|
-| `docs/` | 설계서·환경노트 |
-| `infra/` | Docker 인프라 (postgres·debezium·redpanda·minio) |
-| `generator/` | 결제 데이터 생성기 (스큐 주입) |
-| `normalize/` | 정규화 (canonical 스키마 검증) |
-| `lake/` | Iceberg/Parquet 랜딩 |
-| `transform/dbt/` | 증분 멱등 집계 (dbt) |
-| `reconcile/` | 3자 컨트롤 토탈 대사 |
-| `orchestration/` | 스케줄/DAG |
-| `bench/` | 성능 측정 훅·부하 테스트 |
-| `scripts/` | 헬퍼 |
+| `file_batch/` | 추출, 불변 bundle, dbt 정산, 실행 소유권, 게시·비교 CLI |
+| `file_batch/tests/` | 공통 데이터 비교, 입력 검사, 실제 PostgreSQL 통합 테스트 |
+| `infra/file-batch/compose.yml` | 분리된 최소 PostgreSQL·배치 컨테이너 |
+| `scripts/test-file-batch.sh` | 자동 테스트·JUnit 결과 생성 |
+| `scripts/verify-file-batch.sh` | 기존 CDC 랜딩과 파일 bundle의 입력·명세·집계 전수 비교 |
+| `scripts/verify-file-batch-live.sh` | 실제 PostgreSQL WAL→Debezium→Kafka→Java 컨슈머 경유 비교 |
+| `serving/` | 기존 일자별 정산 요약·파트너 상세 조회 API |
 
-## 빌드 단계 (점진)
-- **1단계** Postgres + 생성기 → DuckDB로 정산 집계+대사 (CDC·로그 없이 본질부터)
-- **2단계** Debezium + Redpanda → 실시간 수집 연결
-- **3단계** MinIO + Iceberg + dbt 증분배치 → 레이크 완성
-- **4단계** 스키마진화·스큐·exactly-once·성능측정 데모
+## 기본 검증
 
-## 검증 시나리오
-멱등(두 번 돌려도 동일) · 정확히 한 번 · 대사 불일치 탐지 · 스키마 진화 · 핫파트너 스큐
+```bash
+python3.11 -m venv .venv-file-batch
+.venv-file-batch/bin/pip install -r file_batch/requirements.lock
+bash scripts/test-file-batch.sh
+```
 
-## 테스트 파라미터 (조정 가능)
-브랜드 2 / 파트너 100(몰A 70% 스큐) / 결제 100만~1,000만(1억 옵션) / 일 단위 정산
-
-자세한 설계는 [docs/DESIGN.md](docs/DESIGN.md), 구동·복구는 [docs/RUNBOOK.md](docs/RUNBOOK.md), CDC 해설은 [docs/CDC.md](docs/CDC.md).
+PostgreSQL 통합 테스트는 별도 테스트 DB와 `FILE_BATCH_TEST_DSN`이 필요하다. 실제 CDC 비교는 Docker·Java 21이 필요하며 자세한 절차는 실행 가이드에 있다. 상류 마감 명세와 기준정보는 명시적 입력 계약으로 받는다. 실제 지급 실행과 운영 HA는 범위 밖이다.

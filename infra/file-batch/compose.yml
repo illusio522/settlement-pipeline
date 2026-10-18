@@ -1,0 +1,35 @@
+name: settlement-file-batch
+services:
+  postgres:
+    image: postgres:16
+    command: [postgres, -c, wal_level=logical]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?환경변수 필요}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?환경변수 필요}
+    ports:
+      - "127.0.0.1:${FILE_BATCH_PG_PORT:-55432}:5432"
+    volumes:
+      - file-pg-data:/var/lib/postgresql/data
+      - ../postgres/init.sql:/docker-entrypoint-initdb.d/00-source.sql:ro
+      - ./init.sql:/docker-entrypoint-initdb.d/01-serving.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d servedb']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  batch:
+    profiles: [tools]
+    build:
+      context: ../..
+      dockerfile: infra/file-batch/Dockerfile
+    environment:
+      FILE_BATCH_PAY_DSN: ${FILE_BATCH_PAY_DSN:-}
+      FILE_BATCH_ORDER_DSN: ${FILE_BATCH_ORDER_DSN:-}
+      FILE_BATCH_SERVING_DSN: ${FILE_BATCH_SERVING_DSN:-}
+    volumes:
+      - ../../data/file-batch:/work/data/file-batch
+    depends_on:
+      postgres:
+        condition: service_healthy
+volumes:
+  file-pg-data:
