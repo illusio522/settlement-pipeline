@@ -26,7 +26,6 @@ PostgreSQL 결제·주문
 - [파일 배치 실행·복구·동등성 검증](docs/FILE-BATCH.md)
 - [실행한 테스트와 결과 비교 기록](docs/FILE-BATCH-VERIFICATION.md)
 - [성능 측정과 CDC 비교](docs/FILE-BATCH-BENCHMARK.md)
-- [포트폴리오](docs/portfolio.md)
 - [설계 기준](docs/FILE-BATCH-DESIGN.md)
 - [기존 CDC 실행 가이드](docs/RUNBOOK.md)
 - [기존 성능 실험](docs/BENCHMARK.md)
