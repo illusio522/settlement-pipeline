@@ -25,6 +25,7 @@ PostgreSQL 결제·주문
 
 - [파일 배치 실행·복구·동등성 검증](docs/FILE-BATCH.md)
 - [실행한 테스트와 결과 비교 기록](docs/FILE-BATCH-VERIFICATION.md)
+- [성능 측정과 CDC 비교](docs/FILE-BATCH-BENCHMARK.md)
 - [포트폴리오](docs/portfolio.md)
 - [설계 기준](docs/FILE-BATCH-DESIGN.md)
 - [기존 CDC 실행 가이드](docs/RUNBOOK.md)
@@ -38,6 +39,8 @@ PostgreSQL 결제·주문
 | `scripts/test-file-batch.sh` | 자동 테스트·JUnit 결과 생성 |
 | `scripts/verify-file-batch.sh` | 기존 CDC 랜딩과 파일 bundle의 입력·명세·집계 전수 비교 |
 | `scripts/verify-file-batch-live.sh` | 실제 PostgreSQL WAL→Debezium→Kafka→Java 컨슈머 경유 비교 |
+| `bench/file-batch-bench.sh` | 파일 배치 규모별 단계 소요 시간 측정 |
+| `bench/cdc-bench.sh` | 같은 데이터·규모로 CDC 경로 단계 소요 시간 측정 |
 | `serving/` | 기존 일자별 정산 요약·파트너 상세 조회 API |
 
 ## 기본 검증
@@ -49,3 +52,7 @@ bash scripts/test-file-batch.sh
 ```
 
 PostgreSQL 통합 테스트는 별도 테스트 DB와 `FILE_BATCH_TEST_DSN`이 필요하다. 실제 CDC 비교는 Docker·Java 21이 필요하며 자세한 절차는 실행 가이드에 있다. 상류 마감 명세와 기준정보는 명시적 입력 계약으로 받는다. 실제 지급 실행과 운영 HA는 범위 밖이다.
+
+## 성능
+
+같은 머신·데이터 조건의 100만 주문에서 마감 기준 전체 소요는 파일 배치 18.07초, CDC 189.89초다. 파일 배치는 1,000만 주문(하루 거래 550만 건)을 158초에 처리했다. 측정 조건, 단계별 시간, CDC가 느린 원인은 [성능 측정과 CDC 비교](docs/FILE-BATCH-BENCHMARK.md)에 정리했다.
