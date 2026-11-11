@@ -1,0 +1,7 @@
+file_settlement:
+  target: batch
+  outputs:
+    batch:
+      type: duckdb
+      path: "{{ env_var('FILE_BATCH_DB') }}"
+      threads: 2

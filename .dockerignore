@@ -1,0 +1,16 @@
+.git
+.env
+**/.env
+**/.env.*
+.venv*
+.gradle*
+**/.gradle
+**/build
+**/bin
+**/__pycache__
+.pytest_cache
+data
+**/target
+**/logs
+.idea
+**/.user.yml

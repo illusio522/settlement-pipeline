@@ -42,3 +42,11 @@ dbt/dbt_packages/
 .idea/
 .vscode/
 *.log
+
+# file-batch local runtime
+.venv-file-batch/
+.pytest_cache/
+file_batch/dbt/target/
+file_batch/dbt/logs/
+.gradle-file-batch/
+file_batch/dbt/.user.yml

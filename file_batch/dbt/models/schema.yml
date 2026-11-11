@@ -1,0 +1,16 @@
+version: 2
+models:
+  - name: settlement_event
+    columns:
+      - name: event_id
+        tests: [unique, not_null]
+      - name: method
+        tests:
+          - accepted_values:
+              arguments: {values: [1, 2, 3, 4]}
+      - name: partner_id
+        tests: [not_null]
+  - name: settlement_agg
+    columns:
+      - name: payout
+        tests: [not_null]
