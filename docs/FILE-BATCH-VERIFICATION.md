@@ -2,7 +2,7 @@
 
 검증일: 2026-10-18. 로컬 합성 데이터로 검증했으며 운영 데이터·부하 검증 결과는 아니다.
 
-기존 구현은 `archive/cdc-lakehouse` (`2dd8d14`), 파일 경로는 `feat/file-batch`에 있다. 비교 기준인 기존 `transform/01_schema.sql`, `e2e_load.sql`, `03_settlement.sql`과 Java 앱 소스는 변경하지 않았다.
+기존 구현은 `archive/cdc-lakehouse` (`39dc3a5`), 파일 경로는 `feat/file-batch`에 있다. 비교 기준인 기존 `transform/01_schema.sql`, `e2e_load.sql`, `03_settlement.sql`과 Java 앱 소스는 변경하지 않았다.
 
 ## 자동 테스트
 

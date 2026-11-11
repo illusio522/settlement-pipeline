@@ -15,9 +15,9 @@ PostgreSQL 결제·주문
 
 | 브랜치 | 용도 |
 |---|---|
-| `main` | 전환 전 기준점 |
+| `main` | 현재 기준 브랜치. 파일 배치 기본 경로와 기존 CDC 코드를 함께 담는다 |
 | `archive/cdc-lakehouse` | 기존 CDC·Kafka·레이크하우스 구현과 당시 문서 보존 |
-| `feat/file-batch` | 파일 배치 기본 경로, 멱등 실행·검증 게이트·두 경로 동등성 검증 |
+| `feat/file-batch` | 파일 배치 기본 경로, 멱등 실행·검증 게이트·두 경로 동등성 검증. `main`에 머지했다 |
 
 기존 `normalize/`, `transform/`, `dbt/`, CDC 인프라는 확장 및 회귀 비교용으로 유지했다. 파일 배치 실행에는 Kafka·Debezium·MinIO·Spark가 필요하지 않다. 실제 CDC와의 수집 구간 비교를 실행할 때만 별도 검증 스택을 사용한다.
 
