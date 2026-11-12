@@ -28,6 +28,8 @@ build/
 **/build/
 .gradle/
 **/.gradle/
+# IDE(VS Code·Eclipse Java 확장)의 컴파일 출력
+**/bin/
 
 # dbt (현 프로젝트 경로)
 dbt/target/
